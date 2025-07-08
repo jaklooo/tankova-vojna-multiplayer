@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tank War Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <video id="intro-video" class="intro-video" preload="auto" muted playsinline>
+        <source src="intro.mp4" type="video/mp4">
+        Tvoj prehliadač nepodporuje HTML5 video.
+    </video>
+
+    <!-- Menu background music -->
+    <audio id="menu-music" src="Menusound.mp3" loop preload="auto"></audio>
+    <!-- Canon shot sound effect (will be played via JS, can overlap) -->
+    <audio id="canon-shot-sound" src="canonshot.mp3" preload="auto"></audio>
+    <!-- Hit sound effects -->
+    <audio id="hitme-sound" src="hitme.mp3" preload="auto"></audio>
+    <audio id="hithim-sound" src="hithim.mp3" preload="auto"></audio>
+    <!-- Explosion sound effect -->
+    <audio id="explosion-sound" src="explosion.mp3" preload="auto"></audio>
+
+    <div id="app-container">
+        <div id="main-menu" class="screen active" style="position:relative;">
+            <!-- PK.png in bottom right corner, double size (128px width) -->
+            <img src="PK.png" alt="PK logo" style="position:absolute; right:18px; bottom:18px; width:128px; height:auto; z-index:5; opacity:0.92; pointer-events:none;">
+            <h1>Tanková Vojna</h1>
+            <button id="start-btn">Štart Hry (Offline)</button>
+            <button id="multiplayer-btn">Online Multiplayer</button>
+            <button id="tutorial-btn">Návod</button>
+            <button id="end-btn">Koniec</button>
+        </div>
+
+        <div id="tutorial-screen" class="screen">
+            <h2>Návod</h2>
+            <p>Pohyb: W, A, S, D</p>
+            <p>Strieľanie: Medzerník</p>
+            <p>Meníš typ strely: <b>1</b> (bežná) a <b>2</b> (špeciálna)</p>
+            <p>Otáčanie kanóna: <b>šípka doľava</b> a <b>šípka doprava</b></p>
+            <p>Cieľ: Znič nepriateľské tanky a preži!</p>
+            <button class="back-to-menu">Späť do Menu</button>
+        </div>
+
+        <!-- Multiplayer Lobby Screen -->
+        <div id="multiplayer-lobby" class="screen">
+            <h2>Online Multiplayer Lobby</h2>
+            <div id="lobby-status">
+                <p>Pripájam sa k serveru...</p>
+            </div>
+            <div id="lobby-players" style="display:none;">
+                <h3>Hráči v miestnosti:</h3>
+                <div id="players-list"></div>
+            </div>
+            
+            <!-- Character Selection in Lobby -->
+            <div id="lobby-character-selection" style="display:none;">
+                <h3>Výber charakteru:</h3>
+                <div id="lobby-character-cards" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:15px; max-width:600px; margin:20px auto; padding:10px;">
+                    <div class="lobby-character-card" data-character="jaccelini">
+                        <img src="ja.png" alt="M. Jaklović" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">M. Jaklović</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Juhoslávia</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="tvaruzhkyn">
+                        <img src="tvaruzek.jpg" alt="J. Tvaruzhkyn" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">J. Tvaruzhkyn</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Rusko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="kindergarden">
+                        <img src="zahry.jpg" alt="J. W. Gardens" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">J. W. Gardens</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">USA</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="landmann">
+                        <img src="zeman.jpg" alt="Herr Landmann" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">Herr Landmann</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Nemecko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="matthews">
+                        <img src="Matous.jpg" alt="A. Matthews" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">A. Matthews</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Brit. kráľovstvo</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="kushi">
+                        <img src="hrebenar.jpg" alt="P. Kushi" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">P. Kushi</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Japonsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="volenec">
+                        <img src="Volenec.JPG" alt="J. Violencini" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">J. Violencini</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Taliansko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="vacu">
+                        <img src="vacu.png" alt="J. Ben Vakul" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">J. Ben Vakul</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Izrael</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="ted">
+                        <img src="ted.jpg" alt="T. J. Millner" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">T. J. Millner</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Južná Afrika</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="svidek">
+                        <img src="svidek.JPG" alt="J. Svidze" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">J. Svidze</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Gruzínsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="simek">
+                        <img src="simek.PNG" alt="T. Šimek" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">T. Šimek</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Česko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="rumpik">
+                        <img src="rumpik.PNG" alt="D. Rampeeq" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">D. Rampeeq</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Pakistan</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="pilar">
+                        <img src="pilar.png" alt="V. Tamil Pilai" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">V. Tamil Pilai</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">India</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="parusev">
+                        <img src="parusev.JPG" alt="J. Parushiev" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">J. Parushiev</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Bulharsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="miki">
+                        <img src="miki.PNG" alt="M. Rasgueau" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">M. Rasgueau</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Francúzsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="mikes">
+                        <img src="mikes.PNG" alt="J. M. Cash" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">J. M. Cash</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Kanada</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="jirka">
+                        <img src="jirka.JPG" alt="J. H. Hisca" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">J. H. Hisca</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Kuba</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="kocvara">
+                        <img src="kocvara.JPG" alt="A. Kochvarsson" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">A. Kochvarsson</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Švédsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="hajek">
+                        <img src="hajek.JPG" alt="P. Hajdukó" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">P. Hajdukó</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Maďarsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="bonko">
+                        <img src="bonko.JPG" alt="M. Bon-kong" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">M. Bon-kong</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Čína</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="ben">
+                        <img src="Ben.JPG" alt="B. H. Horácio" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">B. H. Horácio</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Brazília</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="romancov">
+                        <img src="romancov.JPG" alt="A. P. Ramezanov" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">A. P. Ramezanov</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Irán</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="huth">
+                        <img src="huth.JPG" alt="O. Hutkowski" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">O. Hutkowski</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Poľsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="belak">
+                        <img src="belak.PNG" alt="F. Bella" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">F. Bella</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Slovensko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="franko">
+                        <img src="franko.JPG" alt="Gen. L. Franco" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">Gen. L. Franco</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Španielsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="fiedler">
+                        <img src="fiedler.JPG" alt="F. Hiedler" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">F. Hiedler</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Švajčiarsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="gaidussen">
+                        <img src="gajdos.png" alt="M. Gaidussen" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">M. Gaidussen</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Nórsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="gazhi">
+                        <img src="gazo.png" alt="M. Al Gazhí" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">M. Al Gazhí</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Lýbie</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="katzenstein">
+                        <img src="kocur.png" alt="F. Katzenstein" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">F. Katzenstein</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Rakúsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="kohenen">
+                        <img src="kohel.jpg" alt="M. Kohenen" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">M. Kohenen</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Fínsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="gnatt">
+                        <img src="komar.jpg" alt="J. Gnatt" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">J. Gnatt</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Austrália</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="christensen">
+                        <img src="kristian.jpg" alt="P. Christensen" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">P. Christensen</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Dánsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="alkunzi">
+                        <img src="kunc.jpg" alt="M. al-Kunzí" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">M. al-Kunzí</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Saudská Arábia</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="khajoo">
+                        <img src="novotnyk.jpg" alt="N. Kha-Joo" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">N. Kha-Joo</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Severná Kórea</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="thneethom">
+                        <img src="novotnyt.png" alt="N. W. Thnee-Thom" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">N. W. Thnee-Thom</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Južná Kórea</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="smakhal">
+                        <img src="slipy.png" alt="F. Smakhal" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">F. Smakhal</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Turecko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="sortuda">
+                        <img src="stastna.jpg" alt="M. Sortuda" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">M. Sortuda</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Portugalsko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="strakadopoulos">
+                        <img src="straka.jpg" alt="M. Strakadopoulos" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">M. Strakadopoulos</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Grécko</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="tumufjik">
+                        <img src="tomovcik.png" alt="M. Tūmūfjīk" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">M. Tūmūfjīk</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Egypt</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="womboclaat">
+                        <img src="vopat.jpg" alt="P. Womboclaat" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">P. Womboclaat</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Jamajka</p>
+                    </div>
+                    <div class="lobby-character-card" data-character="votrubovskij">
+                        <img src="votruba.png" alt="J. Votrubovskij" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">J. Votrubovskij</h5>
+                        <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Bielorusko</p>
+                    </div>
+                </div>
+                <div id="selected-character-info" style="text-align:center; margin:10px 0; color:#e74c3c;">
+                    <strong>Vybraný charakter: <span id="selected-character-name">Žiadny</span></strong>
+                </div>
+            </div>
+
+            <!-- Tank Selection in Lobby -->
+            <div id="lobby-tank-selection" style="display:none;">
+                <h3>Výber tanku:</h3>
+                <div id="lobby-tank-cards">
+                    <div class="lobby-tank-card" data-tank="purple">
+                        <h4>Obrnený Bojovník</h4>
+                        <canvas class="lobby-tank-preview" data-tank-type="purple" width="80" height="60"></canvas>
+                        <p>HP: 120, Armor: 60</p>
+                    </div>
+                    <div class="lobby-tank-card" data-tank="orange">
+                        <h4>Rýchly Útočník</h4>
+                        <canvas class="lobby-tank-preview" data-tank-type="orange" width="80" height="60"></canvas>
+                        <p>HP: 90, Speed: +50%</p>
+                    </div>
+                    <div class="lobby-tank-card" data-tank="brown">
+                        <h4>Ťažký Moloch</h4>
+                        <canvas class="lobby-tank-preview" data-tank-type="brown" width="80" height="60"></canvas>
+                        <p>HP: 250, Damage: 150</p>
+                    </div>
+                </div>
+                <div id="selected-tank-info" style="text-align:center; margin:10px 0; color:#3498db;">
+                    <strong>Vybraný tank: <span id="selected-tank-name">Žiadny</span></strong>
+                </div>
+            </div>
+
+            <!-- Map Selection in Lobby -->
+            <div id="lobby-map-selection" style="display:none;">
+                <h3>Výber mapy:</h3>
+                <div id="lobby-map-cards">
+                    <div class="lobby-map-card" data-map="1">
+                        <img src="grass_texture.png" alt="Mapa 1" style="width:100px; height:70px; object-fit:cover; border-radius:8px; margin-bottom:8px;">
+                        <h4>Zelená krajina</h4>
+                        <p>Stromy, močiare, skaly</p>
+                    </div>
+                    <div class="lobby-map-card" data-map="2">
+                        <img src="dessert.jpg" alt="Mapa 2" style="width:100px; height:70px; object-fit:cover; border-radius:8px; margin-bottom:8px;">
+                        <h4>Púšť</h4>
+                        <p>Ropné veže, skaly</p>
+                    </div>
+                    <div class="lobby-map-card" data-map="3">
+                        <img src="ice.png" alt="Mapa 3" style="width:100px; height:70px; object-fit:cover; border-radius:8px; margin-bottom:8px;">
+                        <h4>Arktída</h4>
+                        <p>Iglá na ľade</p>
+                    </div>
+                </div>
+                <div id="selected-map-info" style="text-align:center; margin:10px 0; color:#f1c40f;">
+                    <strong>Vybraná mapa: <span id="selected-map-name">Náhodná</span></strong>
+                </div>
+            </div>
+            
+            <div id="lobby-ready-section" style="display:none;">
+                <button id="ready-btn" style="display:none;">Som pripravený!</button>
+            </div>
+            <div id="lobby-waiting" style="display:none;">
+                <p>Čakám na ďalších hráčov...</p>
+                <div id="waiting-dots">●●●</div>
+            </div>
+            <button class="back-to-menu">Späť do Menu</button>
+        </div>
+
+        <!-- Výber mapy po výbere charakteru -->
+        <div id="map-selection" class="screen">
+            <h2>Vyber Mapu</h2>
+            <div class="map-cards">
+                <div class="map-card" data-map="1">
+                    <img src="grass_texture.png" alt="Mapa 1" style="width:120px; height:80px; object-fit:cover; border-radius:10px; border:2px solid #27ae60; margin-bottom:10px;">
+                    <h3>Mapa 1: Zelená krajina</h3>
+                    <p>Klasické prostredie</p>
+                </div>
+                <div class="map-card" data-map="2">
+                    <img src="dessert.jpg" alt="Mapa 2" style="width:120px; height:80px; object-fit:cover; border-radius:10px; border:2px solid #e67e22; margin-bottom:10px;">
+                    <h3>Mapa 2: Púšť s ropnými vežami</h3>
+                    <p>Púštna podlaha, objekty: oilrig</p>
+                </div>
+                <div class="map-card" data-map="3">
+                    <img src="ice.png" alt="Mapa 3" style="width:120px; height:80px; object-fit:cover; border-radius:10px; border:2px solid #3498db; margin-bottom:10px;">
+                    <h3>Mapa 3: Ľadová Arktída</h3>
+                    <p>Ľadová podlaha, objekty: iglu</p>
+                </div>
+            </div>
+            <button class="back-to-menu">Späť do Menu</button>
+        </div>
+
+        <div id="mode-selection" class="screen">
+            <h2>Výber Režimu</h2>
+            <button data-mode="1v1">1 vs 1</button>
+            <button data-mode="6v6">6 vs 6</button>
+            <button data-mode="12v12">12 vs 12</button>
+            <button data-mode="20v20">20 vs 20</button>
+            <button class="back-to-menu">Späť do Menu</button>
+        </div>
+
+        <div id="character-selection" class="screen">
+            <h2>Vyber Si Svojho Veliteľa</h2>
+            <div class="character-cards">
+                <div class="character-card" data-char="jaccelini">
+                    <img src="ja.png" alt="M. Jaklović">
+                    <h3>M. Jaklović</h3>
+                    <p>Národ: Juhoslávia</p>
+                </div>
+                <div class="character-card" data-char="tvaruzhkyn">
+                    <img src="tvaruzek.jpg" alt="J. Tvaruzhkyn">
+                    <h3>J. Tvaruzhkyn</h3>
+                    <p>Národ: Rusko</p>
+                </div>
+                <div class="character-card" data-char="kindergarden">
+                    <img src="zahry.jpg" alt="J. W. Gardens">
+                    <h3>J. W. Gardens</h3>
+                    <p>Národ: USA</p>
+                </div>
+                <div class="character-card" data-char="landmann">
+                    <img src="zeman.jpg" alt="Herr Landmann">
+                    <h3>Herr Landmann</h3>
+                    <p>Národ: Nemecko</p>
+                </div>
+                <div class="character-card" data-char="matthews">
+                    <img src="Matous.jpg" alt="A. Matthews">
+                    <h3>A. Matthews</h3>
+                    <p>Národ: Spojené Kráľovstvo</p>
+                </div>
+                <div class="character-card" data-char="kushi">
+                    <img src="hrebenar.jpg" alt="P. Kushi">
+                    <h3>P. Kushi</h3>
+                    <p>Národ: Japonsko</p>
+                </div>
+                <div class="character-card" data-char="volenec">
+                    <img src="Volenec.JPG" alt="J. Violencini">
+                    <h3>J. Violencini</h3>
+                    <p>Národ: Taliansko</p>
+                </div>
+                <div class="character-card" data-char="vacu">
+                    <img src="vacu.png" alt="J. Ben Vakul">
+                    <h3>J. Ben Vakul</h3>
+                    <p>Národ: Izrael</p>
+                </div>
+                <div class="character-card" data-char="ted">
+                    <img src="ted.jpg" alt="T. J. Millner">
+                    <h3>T. J. Millner</h3>
+                    <p>Národ: Južná Afrika</p>
+                </div>
+                <div class="character-card" data-char="svidek">
+                    <img src="svidek.JPG" alt="J. Svidze">
+                    <h3>J. Svidze</h3>
+                    <p>Národ: Gruzínsko</p>
+                </div>
+                <div class="character-card" data-char="simek">
+                    <img src="simek.PNG" alt="T. Šimek">
+                    <h3>T. Šimek</h3>
+                    <p>Národ: Česko</p>
+                </div>
+                <div class="character-card" data-char="rumpik">
+                    <img src="rumpik.PNG" alt="D. Rampeeq">
+                    <h3>D. Rampeeq</h3>
+                    <p>Národ: Pakistan</p>
+                </div>
+                <div class="character-card" data-char="pilar">
+                    <img src="pilar.png" alt="V. Tamil Pilai">
+                    <h3>V. Tamil Pilai</h3>
+                    <p>Národ: India</p>
+                </div>
+                <div class="character-card" data-char="parusev">
+                    <img src="parusev.JPG" alt="J. Parushiev">
+                    <h3>J. Parushiev</h3>
+                    <p>Národ: Bulharsko</p>
+                </div>
+                <div class="character-card" data-char="miki">
+                    <img src="miki.PNG" alt="M. Rasgueau">
+                    <h3>M. Rasgueau</h3>
+                    <p>Národ: Francúzsko</p>
+                </div>
+                <div class="character-card" data-char="mikes">
+                    <img src="mikes.PNG" alt="J. M. Cash">
+                    <h3>J. M. Cash</h3>
+                    <p>Národ: Kanada</p>
+                </div>
+                <div class="character-card" data-char="jirka">
+                    <img src="jirka.JPG" alt="J. H. Hisca">
+                    <h3>J. H. Hisca</h3>
+                    <p>Národ: Kuba</p>
+                </div>
+                <div class="character-card" data-char="kocvara">
+                    <img src="kocvara.JPG" alt="A. Kochvarsson">
+                    <h3>A. Kochvarsson</h3>
+                    <p>Národ: Švédsko</p>
+                </div>
+                <div class="character-card" data-char="hajek">
+                    <img src="hajek.JPG" alt="P. Hajdukó">
+                    <h3>P. Hajdukó</h3>
+                    <p>Národ: Maďarsko</p>
+                </div>
+                <div class="character-card" data-char="bonko">
+                    <img src="bonko.JPG" alt="M. Bon-kong">
+                    <h3>M. Bon-kong</h3>
+                    <p>Národ: Čína</p>
+                </div>
+                <div class="character-card" data-char="ben">
+                    <img src="Ben.JPG" alt="B. H. Horácio">
+                    <h3>B. H. Horácio</h3>
+                    <p>Národ: Brazília</p>
+                </div>
+                <div class="character-card" data-char="romancov">
+                    <img src="romancov.JPG" alt="A. P. Ramezanov">
+                    <h3>A. P. Ramezanov</h3>
+                    <p>Národ: Irán</p>
+                </div>
+                <div class="character-card" data-char="huth">
+                    <img src="huth.JPG" alt="O. Hutkowski">
+                    <h3>O. Hutkowski</h3>
+                    <p>Národ: Poľsko</p>
+                </div>
+                <div class="character-card" data-char="belak">
+                    <img src="belak.PNG" alt="F. Bella">
+                    <h3>F. Bella</h3>
+                    <p>Národ: Slovensko</p>
+                </div>
+                <div class="character-card" data-char="franko">
+                    <img src="franko.JPG" alt="Gen. L. Franco">
+                    <h3>Gen. L. Franco</h3>
+                    <p>Národ: Španielsko</p>
+                </div>
+                <div class="character-card" data-char="fiedler">
+                    <img src="fiedler.JPG" alt="F. Hiedler">
+                    <h3>F. Hiedler</h3>
+                    <p>Národ: Švajčiarsko</p>
+                </div>
+                <div class="character-card" data-char="gaidussen">
+                    <img src="gajdos.png" alt="M. Gaidussen">
+                    <h3>M. Gaidussen</h3>
+                    <p>Národ: Nórsko</p>
+                </div>
+                <div class="character-card" data-char="gazhi">
+                    <img src="gazo.png" alt="M. Al Gazhí">
+                    <h3>M. Al Gazhí</h3>
+                    <p>Národ: Lýbie</p>
+                </div>
+                <div class="character-card" data-char="katzenstein">
+                    <img src="kocur.png" alt="F. Katzenstein">
+                    <h3>F. Katzenstein</h3>
+                    <p>Národ: Rakúsko</p>
+                </div>
+                <div class="character-card" data-char="kohenen">
+                    <img src="kohel.jpg" alt="M. Kohenen">
+                    <h3>M. Kohenen</h3>
+                    <p>Národ: Fínsko</p>
+                </div>
+                <div class="character-card" data-char="gnatt">
+                    <img src="komar.jpg" alt="J. Gnatt">
+                    <h3>J. Gnatt</h3>
+                    <p>Národ: Austrália</p>
+                </div>
+                <div class="character-card" data-char="christensen">
+                    <img src="kristian.jpg" alt="P. Christensen">
+                    <h3>P. Christensen</h3>
+                    <p>Národ: Dánsko</p>
+                </div>
+                <div class="character-card" data-char="alkunzi">
+                    <img src="kunc.jpg" alt="M. al-Kunzí">
+                    <h3>M. al-Kunzí</h3>
+                    <p>Národ: Saudská Arábia</p>
+                </div>
+                <div class="character-card" data-char="khajoo">
+                    <img src="novotnyk.jpg" alt="N. Kha-Joo">
+                    <h3>N. Kha-Joo</h3>
+                    <p>Národ: Severná Kórea</p>
+                </div>
+                <div class="character-card" data-char="thneethom">
+                    <img src="novotnyt.png" alt="N. W. Thnee-Thom">
+                    <h3>N. W. Thnee-Thom</h3>
+                    <p>Národ: Južná Kórea</p>
+                </div>
+                <div class="character-card" data-char="smakhal">
+                    <img src="slipy.png" alt="F. Smakhal">
+                    <h3>F. Smakhal</h3>
+                    <p>Národ: Turecko</p>
+                </div>
+                <div class="character-card" data-char="sortuda">
+                    <img src="stastna.jpg" alt="M. Sortuda">
+                    <h3>M. Sortuda</h3>
+                    <p>Národ: Portugalsko</p>
+                </div>
+                <div class="character-card" data-char="strakadopoulos">
+                    <img src="straka.jpg" alt="M. Strakadopoulos">
+                    <h3>M. Strakadopoulos</h3>
+                    <p>Národ: Grécko</p>
+                </div>
+                <div class="character-card" data-char="tumufjik">
+                    <img src="tomovcik.png" alt="M. Tūmūfjīk">
+                    <h3>M. Tūmūfjīk</h3>
+                    <p>Národ: Egypt</p>
+                </div>
+                <div class="character-card" data-char="womboclaat">
+                    <img src="vopat.jpg" alt="P. Womboclaat">
+                    <h3>P. Womboclaat</h3>
+                    <p>Národ: Jamajka</p>
+                </div>
+                <div class="character-card" data-char="votrubovskij">
+                    <img src="votruba.png" alt="J. Votrubovskij">
+                    <h3>J. Votrubovskij</h3>
+                    <p>Národ: Bielorusko</p>
+                </div>
+            </div>
+            <div class="character-selection-buttons-row">
+                <button class="back-to-menu">Späť do Menu</button>
+                <button id="character-dalej-btn">Ďalej</button>
+                <button id="character-nahodny-btn">Náhodný výber</button>
+            </div>
+        </div>
+
+        <div id="tank-selection" class="screen">
+            <h2>Vyber Si Svoj Tank</h2>
+            <div class="tank-cards">
+                <div class="tank-card" data-tank="purple">
+                    <h3>Obrnený Bojovník</h3>
+                    <canvas class="tank-preview-canvas" data-tank-type="purple" width="100" height="80"></canvas>
+                    <p>Vyvážený, veľa HP, dobrý pancier</p>
+                    <div class="stats">
+                        <span>HP: 120</span>
+                        <span>Armor: 60</span>
+                        <span>Speed: 1</span>
+                        <span>Damage: 70</span>
+                    </div>
+                </div>
+                <div class="tank-card" data-tank="orange">
+                    <h3>Rýchly Útočník</h3>
+                    <canvas class="tank-preview-canvas" data-tank-type="orange" width="100" height="80"></canvas>
+                    <p>Rýchly, málo HP, rýchla streľba</p>
+                    <div class="stats">
+                        <span>HP: 90</span>
+                        <span>Armor: 90</span>
+                        <span>Speed: 1.5</span>
+                        <span>Damage: 30</span>
+                    </div>
+                </div>
+                <div class="tank-card" data-tank="brown">
+                    <h3>Ťažký Moloch</h3>
+                    <canvas class="tank-preview-canvas" data-tank-type="brown" width="100" height="80"></canvas>
+                    <p>Veľa HP, silné poškodenie, veľmi pomalý</p>
+                    <div class="stats">
+                        <span>HP: 250</span>
+                        <span>Armor: 40</span>
+                        <span>Speed: 0.7</span>
+                        <span>Damage: 150</span>
+                    </div>
+                </div>
+            </div>
+            <button class="back-to-menu">Späť do Menu</button>
+        </div>
+
+        <div id="pause-menu" style="display:none; position:fixed; left:0; top:0; width:100vw; height:100vh; background:rgba(20,20,20,0.85); z-index:200; align-items:center; justify-content:center;">
+            <div style="background:#232323; border-radius:18px; box-shadow:0 4px 24px #000a; padding:38px 48px; display:flex; flex-direction:column; align-items:center; gap:24px; min-width:320px;">
+                <h2 style="color:#fff; margin-bottom:12px;">Pauza</h2>
+                <button id="pause-continue-btn" style="font-size:1.2em; padding:10px 32px; margin-bottom:8px;">Pokračuj</button>
+                <button id="pause-exit-btn" style="font-size:1.2em; padding:10px 32px;">Odchod do menu</button>
+            </div>
+        </div>
+        <div id="game-container" class="screen">
+            <!-- Eliminated notification -->
+            <div id="elimination-notification" style="position:fixed; top:30px; right:-400px; z-index:100; transition:right 0.6s cubic-bezier(.7,1.7,.7,1); pointer-events:none;">
+                <div style="background:rgba(30,30,30,0.95); border-radius:18px; box-shadow:0 4px 16px #000a; display:flex; align-items:center; min-width:320px; max-width:400px; padding:18px 28px 18px 18px; gap:18px; border:3px solid #c0392b;">
+                    <img id="elim-char-img" src="" alt="char" style="width:72px; height:72px; border-radius:50%; border:3px solid #fff; object-fit:cover; background:#222;">
+                    <div style="flex:1; display:flex; flex-direction:column; align-items:flex-start;">
+                        <div id="elim-char-name" style="font-size:1.2em; font-weight:bold; color:#fff; margin-bottom:2px;"></div>
+                        <div id="elim-eliminated" style="font-size:1.3em; color:#e74c3c; font-weight:bold; margin-bottom:4px;">Eliminated!</div>
+                        <div id="elim-team" style="font-size:0.95em; color:#bbb;">Team: <span id="elim-team-leader"></span></div>
+                    </div>
+                </div>
+            </div>
+            <div id="hud-top">
+                <div id="score-display">
+                    <div class="team-info" id="player-team-info">
+                        <img id="player-char-img" src="" alt="Player Character" class="char-icon">
+                        <span id="player-team-name">Tím Hráča: 0</span>
+                        <div class="team-heads" id="player-team-heads"></div>
+                    </div>
+                    <div class="team-info" id="enemy-team-info">
+                        <img id="enemy-char-img" src="" alt="Enemy Character" class="char-icon">
+                        <span id="enemy-team-name">Tím Nepriateľa: 0</span>
+                        <div class="team-heads" id="enemy-team-heads"></div>
+                    </div>
+                </div>
+                <div id="round-info">
+                    <span id="round-message"></span>
+                    <span id="round-timer"></span>
+                </div>
+                <div id="coin-display">
+                    <img src="coin.png" alt="Coins" class="coin-icon">
+                    <span id="player-coins">0</span>
+                </div>
+            </div>
+            <!-- Bullet selection UI centered in the top HUD bar -->
+            <div id="bullet-selection-ui" style="display:flex; justify-content:center; align-items:center; gap:18px; position:absolute; left:50%; top:18px; transform:translateX(-50%); z-index:12;">
+                <div class="bullet-option" data-bullet="1">
+                    <img src="bullet.png" alt="Bullet 1" class="bullet-icon">
+                    <div class="bullet-cost">0</div>
+                </div>
+                <div class="bullet-option" data-bullet="2">
+                    <img src="bullet2.png" alt="Bullet 2" class="bullet-icon">
+                    <div class="bullet-cost">30</div>
+                </div>
+            </div>
+            </div>
+            <canvas id="gameCanvas"></canvas>
+        </div>
+
+        <div id="end-screen" class="screen">
+            <h2 id="end-message"></h2>
+            <button class="back-to-menu">Späť do Menu</button>
+        </div>
+    </div>
+    <!-- Socket.io client -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+    
+    <script>
+    // Menu music logic
+    const menuMusic = document.getElementById('menu-music');
+    function playMenuMusic() {
+        if (menuMusic.paused) {
+            menuMusic.currentTime = 0;
+            menuMusic.volume = 0.5;
+            menuMusic.play().catch(()=>{});
+        }
+    }
+    function stopMenuMusic() {
+        if (!menuMusic.paused) {
+            menuMusic.pause();
+            menuMusic.currentTime = 0;
+        }
+    }
+    // Play music on menu screens, stop on game
+    document.addEventListener('DOMContentLoaded', function() {
+        playMenuMusic();
+    });
+    // Listen for screen changes from script.js
+    window.addEventListener('showScreen', function(e) {
+        const screen = e.detail;
+        if (screen === 'game') {
+            stopMenuMusic();
+        } else {
+            playMenuMusic();
+        }
+    });
+    </script>
+</body>
+</html>
