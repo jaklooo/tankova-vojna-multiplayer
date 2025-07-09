@@ -516,6 +516,51 @@ function generatePlayerSpawnPositions(players, arenaWidth, arenaHeight, obstacle
     return positions;
 }
 
+// Debug endpoint for file diagnostics
+app.get('/debug/files', (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    
+    try {
+        const files = fs.readdirSync('./');
+        const images = files.filter(f => f.match(/\.(png|jpg|gif|jpeg)$/i));
+        
+        // Skontrolujte aj konkrétne súbory ktoré potrebujeme
+        const testFiles = [
+            'ja.png', 'JA.png', 'bullet.png', 'bullet2.png', 
+            'tank1.png', 'tank2.png', 'tank3.png',
+            'canon1.png', 'canon2.png', 'canon3.png',
+            'grass_texture.png', 'menu_background.png',
+            'tvaruzek.jpg', 'zahry.jpg', 'zeman.jpg',
+            'rumpik.PNG', 'simek.PNG', 'PK.png',
+            'dessert.jpg', 'ice.png', 'IGLU.png'
+        ];
+        
+        const fileStatus = {};
+        testFiles.forEach(file => {
+            fileStatus[file] = fs.existsSync(file);
+        });
+        
+        res.json({ 
+            message: 'Debug info for Tank War Multiplayer',
+            allFiles: files.slice(0, 100), // Prvých 100 súborov
+            imageFiles: images,
+            totalFiles: files.length,
+            totalImages: images.length,
+            currentDir: process.cwd(),
+            nodeEnv: process.env.NODE_ENV,
+            testFiles: fileStatus,
+            // Zoznam chýbajúcich testovacích súborov
+            missingFiles: testFiles.filter(file => !fs.existsSync(file))
+        });
+    } catch (err) {
+        res.json({ 
+            error: err.message,
+            stack: err.stack 
+        });
+    }
+});
+
 // Start server
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
