@@ -12,7 +12,7 @@ let selectedLobbyTank = null; // Selected tank in lobby
 // --- MULTIPLAYER OPTIMIZATIONS ---
 let lastNetworkSync = 0;
 const NETWORK_SYNC_INTERVAL = 150; // Send position updates every 150ms for better performance (6.7 FPS)
-const MULTIPLAYER_TARGET_FPS = 30; // Reduced FPS for multiplayer
+const MULTIPLAYER_TARGET_FPS = 50; // Increased FPS for better multiplayer experience
 const MULTIPLAYER_FRAME_TIME = 1000 / MULTIPLAYER_TARGET_FPS;
 const EFFECTS_REDUCTION_FACTOR = 0.3; // Reduce visual effects in multiplayer
 const MAX_PARTICLES_MULTIPLAYER = 15; // Limit particles in multiplayer
@@ -3032,20 +3032,20 @@ function stopGame() {
 function gameLoop() {
     if (isPaused) return;
     
-    // Temporarily disable FPS limiting for multiplayer performance testing
-    // if (isMultiplayer) {
-    //     const now = performance.now();
-    //     const deltaTime = now - lastFrameTime;
-    //     
-    //     if (deltaTime < MULTIPLAYER_FRAME_TIME) {
-    //         // Skip this frame if not enough time has passed
-    //         if (!gameState.roundOver) {
-    //             gameState.animationFrameId = requestAnimationFrame(gameLoop);
-    //         }
-    //         return;
-    //     }
-    //     lastFrameTime = now;
-    // }
+    // FPS limiting for multiplayer performance (50 FPS)
+    if (isMultiplayer) {
+        const now = performance.now();
+        const deltaTime = now - lastFrameTime;
+        
+        if (deltaTime < MULTIPLAYER_FRAME_TIME) {
+            // Skip this frame if not enough time has passed
+            if (!gameState.roundOver) {
+                gameState.animationFrameId = requestAnimationFrame(gameLoop);
+            }
+            return;
+        }
+        lastFrameTime = now;
+    }
     
     update();
     draw();
