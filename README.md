@@ -1,1 +1,1 @@
-Hra je v testovacej verzií
+// Hra je v testovacej verzií

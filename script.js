@@ -1208,13 +1208,13 @@ class Tank {
 
         this.checkBoundsAndCollisions(prevX, prevY);
 
-        // Add tank tracks
+        // Add tank tracks - reduced frequency in multiplayer for performance
         const distanceMoved = Math.sqrt(Math.pow(this.x - this.lastTrackX, 2) + Math.pow(this.y - this.lastTrackY, 2));
-        const trackThreshold = 15;
+        const trackThreshold = isMultiplayer ? 25 : 15; // Increase threshold in multiplayer
         if (distanceMoved > trackThreshold) {
             gameState.tracks.push(new Track(this.x + this.width / 2, this.y + this.height / 2, this.angle, Date.now()));
             this.lastTrackX = this.x;
-            this.lastTrackY = this.sy;
+            this.lastTrackY = this.y;
         }
     }
 
@@ -1420,7 +1420,8 @@ class Tank {
     }
 
     explode() {
-        const numParticles = 30; // Number of explosion particles
+        // Reduce particles in multiplayer for better performance
+        const numParticles = isMultiplayer ? Math.floor(30 * EFFECTS_REDUCTION_FACTOR) : 30;
         const explosionColor = this.color; // Match tank color
         for (let i = 0; i < numParticles; i++) {
             const angle = Math.random() * Math.PI * 2;
@@ -1654,7 +1655,7 @@ class Obstacle {
                 // Remove tree from obstacles
                 gameState.obstacles = gameState.obstacles.filter(obs => obs !== this);
                 // Optionally add explosion effect for tree
-                const numParticles = 15;
+                const numParticles = isMultiplayer ? Math.floor(15 * EFFECTS_REDUCTION_FACTOR) : 15;
                 for (let i = 0; i < numParticles; i++) {
                     gameState.particles.push(new Particle(this.x, this.y, Math.random() * Math.PI * 2, Math.random() * 3 + 1, Math.random() * 3 + 1, '#5D4037', 30));
                 }
@@ -1667,8 +1668,8 @@ class Obstacle {
                 this.health = 0;
                 // Remove rock from obstacles
                 gameState.obstacles = gameState.obstacles.filter(obs => obs !== this);
-                // Add rock destruction particles (gray/brown)
-                const numParticles = 20;
+                // Add rock destruction particles (gray/brown) - reduced in multiplayer
+                const numParticles = isMultiplayer ? Math.floor(20 * EFFECTS_REDUCTION_FACTOR) : 20;
                 for (let i = 0; i < numParticles; i++) {
                     const colors = ['#7f8c8d', '#95a5a6', '#6c7b7d'];
                     const color = colors[Math.floor(Math.random() * colors.length)];
@@ -1704,8 +1705,8 @@ class Obstacle {
                 this.health = 0;
                 // Remove oilrig from obstacles
                 gameState.obstacles = gameState.obstacles.filter(obs => obs !== this);
-                // Add oilrig destruction particles (black/gray for oil)
-                const numParticles = 25;
+                // Add oilrig destruction particles (black/gray for oil) - reduced in multiplayer
+                const numParticles = isMultiplayer ? Math.floor(25 * EFFECTS_REDUCTION_FACTOR) : 25;
                 for (let i = 0; i < numParticles; i++) {
                     const colors = ['#2c3e50', '#34495e', '#1e272e'];
                     const color = colors[Math.floor(Math.random() * colors.length)];
@@ -3130,6 +3131,11 @@ function update() {
     // Update particles
     gameState.particles.forEach(p => p.update());
     gameState.particles = gameState.particles.filter(p => p.life > 0);
+    
+    // Limit particles in multiplayer for performance
+    if (isMultiplayer && gameState.particles.length > MAX_PARTICLES_MULTIPLAYER) {
+        gameState.particles = gameState.particles.slice(-MAX_PARTICLES_MULTIPLAYER);
+    }
 
     // Update shot effects
     gameState.shotEffects.forEach(s => s.update());
@@ -3138,6 +3144,11 @@ function update() {
     // Update hit effects
     gameState.hitEffects.forEach(h => h.update());
     gameState.hitEffects = gameState.hitEffects.filter(h => h.life > 0);
+    
+    // Limit tracks in multiplayer for performance
+    if (isMultiplayer && gameState.tracks.length > MAX_TRACKS_MULTIPLAYER) {
+        gameState.tracks = gameState.tracks.slice(-MAX_TRACKS_MULTIPLAYER);
+    }
 
     // Collisions
     handleCollisions();
