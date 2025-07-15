@@ -9,6 +9,17 @@ let selectedLobbyMap = null; // Selected map in lobby
 let selectedLobbyCharacter = null; // Selected character in lobby
 let selectedLobbyTank = null; // Selected tank in lobby
 
+// --- MULTIPLAYER OPTIMIZATIONS ---
+let lastNetworkSync = 0;
+const NETWORK_SYNC_INTERVAL = 150; // Send position updates every 150ms for better performance (6.7 FPS)
+const MULTIPLAYER_TARGET_FPS = 30; // Reduced FPS for multiplayer
+const MULTIPLAYER_FRAME_TIME = 1000 / MULTIPLAYER_TARGET_FPS;
+const EFFECTS_REDUCTION_FACTOR = 0.3; // Reduce visual effects in multiplayer
+const MAX_PARTICLES_MULTIPLAYER = 15; // Limit particles in multiplayer
+const MAX_TRACKS_MULTIPLAYER = 20; // Limit tank tracks in multiplayer
+const VIEWPORT_CULLING_MARGIN = 300; // Extra margin for viewport culling (increased for multiplayer)
+let lastFrameTime = 0;
+
 // Initialize multiplayer connection
 function initMultiplayer() {
     socket = io();
@@ -1645,6 +1656,15 @@ class Obstacle {
         };
     }
 
+    // Check if object is in the current viewport for performance optimization
+    isInViewport() {
+        const margin = VIEWPORT_CULLING_MARGIN;
+        return this.x + this.width > gameState.cameraX - margin &&
+               this.x < gameState.cameraX + canvas.width - margin &&
+               this.y + this.height > gameState.cameraY - margin &&
+               this.y < gameState.cameraY + canvas.height - margin;
+    }
+
     takeDamage(damage, attacker) { // Added attacker parameter
         if (this.type === 'tree') {
             this.health -= damage;
@@ -3011,6 +3031,22 @@ function stopGame() {
 // --- MAIN GAME LOOP ---
 function gameLoop() {
     if (isPaused) return;
+    
+    // Temporarily disable FPS limiting for multiplayer performance testing
+    // if (isMultiplayer) {
+    //     const now = performance.now();
+    //     const deltaTime = now - lastFrameTime;
+    //     
+    //     if (deltaTime < MULTIPLAYER_FRAME_TIME) {
+    //         // Skip this frame if not enough time has passed
+    //         if (!gameState.roundOver) {
+    //             gameState.animationFrameId = requestAnimationFrame(gameLoop);
+    //         }
+    //         return;
+    //     }
+    //     lastFrameTime = now;
+    // }
+    
     update();
     draw();
     drawMinimap(); // Draw minimap in each frame
@@ -3032,13 +3068,15 @@ function update() {
         
         gameState.player.move();
         
-        // Send position update to other players (multiplayer)
-        if (isMultiplayer && socket && (
+        // Send position update to other players (multiplayer) with throttling
+        const now = Date.now();
+        if (isMultiplayer && socket && now - lastNetworkSync > NETWORK_SYNC_INTERVAL && (
             Math.abs(gameState.player.x - oldX) > 1 || 
             Math.abs(gameState.player.y - oldY) > 1 || 
             Math.abs(gameState.player.angle - oldAngle) > 0.01 ||
             Math.abs(gameState.player.turretAbsoluteAngle - oldTurretAngle) > 0.01
         )) {
+            lastNetworkSync = now;
             socket.emit('player-position', {
                 x: gameState.player.x,
                 y: gameState.player.y,
@@ -3159,8 +3197,14 @@ function update() {
         b.y > -100 && b.y < gameState.arenaHeight + 100
     );
 
-    // Remove old tracks
-    gameState.tracks = gameState.tracks.filter(track => Date.now() - track.timestamp < 2000);
+    // Remove old tracks (shorter lifetime in multiplayer)
+    const trackLifetime = isMultiplayer ? 1000 : 2000; // 1s in multiplayer, 2s in singleplayer
+    gameState.tracks = gameState.tracks.filter(track => Date.now() - track.timestamp < trackLifetime);
+    
+    // Limit tracks count in multiplayer for better performance
+    if (isMultiplayer && gameState.tracks.length > MAX_TRACKS_MULTIPLAYER) {
+        gameState.tracks = gameState.tracks.slice(-MAX_TRACKS_MULTIPLAYER);
+    }
 
     // Update pulsating team indicator effect
     gameState.teamIndicatorPulse = (gameState.teamIndicatorPulse + 0.05);
@@ -4377,6 +4421,23 @@ function checkCollision(rect1, rect2) {
            rect1.y + rect1.height > rect2.y;
 }
 
+// --- VIEWPORT CULLING (Performance optimization for multiplayer) ---
+function isInViewport(obj) {
+    // Skip culling in single player or for player tank
+    if (!isMultiplayer || obj.isPlayer) return true;
+    
+    const viewportX = gameState.cameraX;
+    const viewportY = gameState.cameraY;
+    const viewportW = canvas.width;
+    const viewportH = canvas.height;
+    
+    // Check if object is within viewport bounds + margin
+    return obj.x + obj.width > viewportX - VIEWPORT_CULLING_MARGIN &&
+           obj.x < viewportX + viewportW + VIEWPORT_CULLING_MARGIN &&
+           obj.y + obj.height > viewportY - VIEWPORT_CULLING_MARGIN &&
+           obj.y < viewportY + viewportH + VIEWPORT_CULLING_MARGIN;
+}
+
 function handleCollisions() {
     const bulletsToRemove = new Set();
 
@@ -4498,8 +4559,12 @@ function draw() {
         ctx.fillRect(0, 0, gameState.arenaWidth, gameState.arenaHeight);
     }
 
-    // Draw tracks first, so tanks are on top
-    gameState.tracks.forEach(track => track.draw());
+    // Draw tracks first, so tanks are on top (with viewport culling)
+    gameState.tracks.forEach(track => {
+        if (isInViewport(track.x, track.y, 8, 8)) {
+            track.draw();
+        }
+    });
 
     // Draw terrain obstacles (swamp, rock, oilrig)
     gameState.obstacles.forEach(obs => {
@@ -4516,9 +4581,15 @@ function draw() {
     // No need to draw rivers or bridges anymore
 
     // Draw tanks
-    if (gameState.player) gameState.player.draw(); // Only draw player if it exists
-    gameState.allies.forEach(ally => ally.draw());
-    gameState.enemies.forEach(enemy => enemy.draw());
+    if (gameState.player) gameState.player.draw(); // Only draw player if it exists (always render)
+    gameState.allies.forEach(ally => {
+        // Temporarily disable culling for allies
+        ally.draw();
+    });
+    gameState.enemies.forEach(enemy => {
+        // Temporarily disable culling for enemies
+        enemy.draw();
+    });
 
     // Draw bullets
     gameState.bullets.forEach(b => b.draw());
@@ -4530,14 +4601,26 @@ function draw() {
         }
     });
 
-    // Draw particles (explosions)
-    gameState.particles.forEach(p => p.draw());
+    // Draw particles (explosions) with viewport culling
+    gameState.particles.forEach(p => {
+        if (isInViewport(p.x, p.y, p.size * 2, p.size * 2)) {
+            p.draw();
+        }
+    });
 
-    // Draw shot effects (muzzle flashes and smoke)
-    gameState.shotEffects.forEach(s => s.draw());
+    // Draw shot effects (muzzle flashes and smoke) with viewport culling
+    gameState.shotEffects.forEach(s => {
+        if (isInViewport(s.x, s.y, 30, 30)) {
+            s.draw();
+        }
+    });
 
-    // Draw hit effects (sparks)
-    gameState.hitEffects.forEach(h => h.draw());
+    // Draw hit effects (sparks) with viewport culling
+    gameState.hitEffects.forEach(h => {
+        if (isInViewport(h.x, h.y, 20, 20)) {
+            h.draw();
+        }
+    });
 
 
     ctx.restore();
