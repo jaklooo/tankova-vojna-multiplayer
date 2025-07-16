@@ -19,16 +19,29 @@ app.use(express.static(path.join(__dirname)));
 let gameRooms = new Map();
 let waitingPlayers = [];
 
+// Game modes configuration
+const GAME_MODES = {
+    '1v1': { maxPlayers: 2, teamMode: false },
+    '2v2': { maxPlayers: 4, teamMode: true },
+    '3v3': { maxPlayers: 6, teamMode: true },
+    'free-for-all-3': { maxPlayers: 3, teamMode: false },
+    'free-for-all-4': { maxPlayers: 4, teamMode: false },
+    'free-for-all-6': { maxPlayers: 6, teamMode: false }
+};
+
 // Room structure
 class GameRoom {
-    constructor(id) {
+    constructor(id, gameMode = '1v1') {
         this.id = id;
         this.players = [];
-        this.maxPlayers = 2; // Start with 1v1
+        this.gameMode = gameMode;
+        this.maxPlayers = GAME_MODES[gameMode].maxPlayers;
+        this.teamMode = GAME_MODES[gameMode].teamMode;
         this.gameState = 'waiting'; // waiting, playing, ended
         this.gameData = null;
         this.selectedMap = null; // Selected map by host
         this.hostId = null; // First player becomes host
+        this.teams = { team1: [], team2: [] }; // For team-based modes
     }
 
     addPlayer(player) {
@@ -38,6 +51,20 @@ class GameRoom {
                 this.hostId = player.id;
                 player.isHost = true;
             }
+            
+            // Auto-assign teams for team-based modes
+            if (this.teamMode) {
+                if (this.teams.team1.length <= this.teams.team2.length) {
+                    this.teams.team1.push(player.id);
+                    player.team = 'team1';
+                } else {
+                    this.teams.team2.push(player.id);
+                    player.team = 'team2';
+                }
+            } else {
+                player.team = null; // No teams in free-for-all
+            }
+            
             this.players.push(player);
             return true;
         }
@@ -45,7 +72,18 @@ class GameRoom {
     }
 
     removePlayer(playerId) {
+        const removedPlayer = this.players.find(p => p.id === playerId);
         this.players = this.players.filter(p => p.id !== playerId);
+        
+        // Remove from teams if team mode
+        if (this.teamMode && removedPlayer) {
+            if (removedPlayer.team === 'team1') {
+                this.teams.team1 = this.teams.team1.filter(id => id !== playerId);
+            } else if (removedPlayer.team === 'team2') {
+                this.teams.team2 = this.teams.team2.filter(id => id !== playerId);
+            }
+        }
+        
         // If host leaves, assign new host
         if (this.hostId === playerId && this.players.length > 0) {
             this.hostId = this.players[0].id;
@@ -66,29 +104,32 @@ class GameRoom {
 io.on('connection', (socket) => {
     console.log('Hráč sa pripojil:', socket.id);
 
-    // Player wants to join game
+    // Player wants to join game with specific mode
     socket.on('join-game', (playerData) => {
         const player = {
             id: socket.id,
             name: playerData.name || 'Neznámy hráč',
             selectedCharacter: null, // Will be selected in lobby
             selectedTank: null, // Will be selected in lobby
-            ready: false
+            ready: false,
+            gameMode: playerData.gameMode || '1v1' // Default to 1v1
         };
 
-        // Find or create room
+        // Find or create room for specific game mode
         let room = null;
         for (let [roomId, gameRoom] of gameRooms) {
-            if (!gameRoom.isFull() && gameRoom.gameState === 'waiting') {
+            if (!gameRoom.isFull() && 
+                gameRoom.gameState === 'waiting' && 
+                gameRoom.gameMode === player.gameMode) {
                 room = gameRoom;
                 break;
             }
         }
 
         if (!room) {
-            // Create new room
+            // Create new room with specified game mode
             const roomId = 'room_' + Date.now();
-            room = new GameRoom(roomId);
+            room = new GameRoom(roomId, player.gameMode);
             gameRooms.set(roomId, room);
         }
 
@@ -104,10 +145,13 @@ io.on('connection', (socket) => {
                 playersCount: room.players.length,
                 maxPlayers: room.maxPlayers,
                 hostId: room.hostId,
-                selectedMap: room.selectedMap
+                selectedMap: room.selectedMap,
+                gameMode: room.gameMode,
+                teamMode: room.teamMode,
+                teams: room.teams
             });
 
-            console.log(`Hráč ${player.name} sa pripojil do miestnosti ${room.id}`);
+            console.log(`Hráč ${player.name} sa pripojil do miestnosti ${room.id} (${room.gameMode})`);
 
             // Don't start game automatically - wait for players to be ready
             // if (room.isFull()) {
@@ -496,9 +540,11 @@ function generateObstacles(mapId, arenaWidth, arenaHeight) {
 
 function generatePlayerSpawnPositions(players, arenaWidth, arenaHeight, obstacles) {
     const positions = {};
+    const playerCount = players.length;
     
-    // For 1v1, spawn players on opposite sides
-    if (players.length === 2) {
+    // Define spawn positions based on number of players
+    if (playerCount === 2) {
+        // 1v1 - opposite corners
         positions[players[0].id] = {
             x: 300,
             y: arenaHeight - 200,
@@ -511,9 +557,94 @@ function generatePlayerSpawnPositions(players, arenaWidth, arenaHeight, obstacle
             tankType: players[1].selectedTank || 'purple',
             character: players[1].selectedCharacter || 'jaccelini'
         };
+    } else if (playerCount === 3) {
+        // Free-for-all 3 - triangle formation
+        const centerX = arenaWidth / 2;
+        const centerY = arenaHeight / 2;
+        const radius = Math.min(arenaWidth, arenaHeight) * 0.3;
+        
+        for (let i = 0; i < 3; i++) {
+            const angle = (i * 2 * Math.PI) / 3;
+            positions[players[i].id] = {
+                x: centerX + Math.cos(angle) * radius,
+                y: centerY + Math.sin(angle) * radius,
+                tankType: players[i].selectedTank || 'purple',
+                character: players[i].selectedCharacter || 'jaccelini'
+            };
+        }
+    } else if (playerCount === 4) {
+        // 2v2 or free-for-all 4 - four corners
+        const margin = 200;
+        const spawnPoints = [
+            { x: margin, y: margin },
+            { x: arenaWidth - margin, y: margin },
+            { x: arenaWidth - margin, y: arenaHeight - margin },
+            { x: margin, y: arenaHeight - margin }
+        ];
+        
+        for (let i = 0; i < 4; i++) {
+            positions[players[i].id] = {
+                x: spawnPoints[i].x,
+                y: spawnPoints[i].y,
+                tankType: players[i].selectedTank || 'purple',
+                character: players[i].selectedCharacter || 'jaccelini'
+            };
+        }
+    } else if (playerCount === 6) {
+        // 3v3 or free-for-all 6 - hexagon formation
+        const centerX = arenaWidth / 2;
+        const centerY = arenaHeight / 2;
+        const radius = Math.min(arenaWidth, arenaHeight) * 0.35;
+        
+        for (let i = 0; i < 6; i++) {
+            const angle = (i * 2 * Math.PI) / 6;
+            positions[players[i].id] = {
+                x: centerX + Math.cos(angle) * radius,
+                y: centerY + Math.sin(angle) * radius,
+                tankType: players[i].selectedTank || 'purple',
+                character: players[i].selectedCharacter || 'jaccelini'
+            };
+        }
     }
     
     return positions;
+}
+
+// API endpoint to get available game modes
+app.get('/api/game-modes', (req, res) => {
+    const modes = Object.keys(GAME_MODES).map(mode => ({
+        id: mode,
+        name: getGameModeName(mode),
+        maxPlayers: GAME_MODES[mode].maxPlayers,
+        teamMode: GAME_MODES[mode].teamMode,
+        description: getGameModeDescription(mode)
+    }));
+    
+    res.json({ gameModes: modes });
+});
+
+function getGameModeName(mode) {
+    const names = {
+        '1v1': '1 vs 1',
+        '2v2': '2 vs 2 (Tímy)',
+        '3v3': '3 vs 3 (Tímy)',
+        'free-for-all-3': 'Voľný súboj (3 hráči)',
+        'free-for-all-4': 'Voľný súboj (4 hráči)',
+        'free-for-all-6': 'Voľný súboj (6 hráčov)'
+    };
+    return names[mode] || mode;
+}
+
+function getGameModeDescription(mode) {
+    const descriptions = {
+        '1v1': 'Klasický súboj jeden na jeden',
+        '2v2': 'Tímový súboj dva proti dvom',
+        '3v3': 'Tímový súboj tri proti trom',
+        'free-for-all-3': 'Každý proti každému - 3 hráči',
+        'free-for-all-4': 'Každý proti každému - 4 hráči',
+        'free-for-all-6': 'Každý proti každému - 6 hráčov'
+    };
+    return descriptions[mode] || 'Popis nie je dostupný';
 }
 
 // Debug endpoint for file diagnostics

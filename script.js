@@ -21,16 +21,21 @@ const VIEWPORT_CULLING_MARGIN = 300; // Extra margin for viewport culling (incre
 let lastFrameTime = 0;
 
 // Initialize multiplayer connection
-function initMultiplayer() {
+function initMultiplayer(gameMode = '1v1') {
+    if (socket && socket.connected) {
+        socket.disconnect();
+    }
+    
     socket = io();
     
     socket.on('connect', () => {
         console.log('Pripojený k serveru');
         isMultiplayer = true;
         
-        // Request to join a game
+        // Request to join a game with specific mode
         socket.emit('join-game', {
-            name: 'Hráč_' + Math.floor(Math.random() * 1000)
+            name: 'Hráč_' + Math.floor(Math.random() * 1000),
+            gameMode: gameMode
         });
     });
     
@@ -169,37 +174,94 @@ function updateLobbyUI(data) {
     const characterSelection = document.getElementById('lobby-character-selection');
     const tankSelection = document.getElementById('lobby-tank-selection');
     
-    lobbyStatus.innerHTML = `<p>Pripojený k serveru - Miestnosť: ${data.roomId} ${isHost ? '(Host)' : ''}</p>`;
+    // Get game mode name
+    const gameModeNames = {
+        '1v1': '1 vs 1',
+        '2v2': '2 vs 2 (Tímy)',
+        '3v3': '3 vs 3 (Tímy)',
+        'free-for-all-3': 'Voľný súboj (3 hráči)',
+        'free-for-all-4': 'Voľný súboj (4 hráči)',
+        'free-for-all-6': 'Voľný súboj (6 hráčov)'
+    };
+    const gameModeName = gameModeNames[data.gameMode] || data.gameMode;
+    
+    lobbyStatus.innerHTML = `
+        <p>Pripojený k serveru - Miestnosť: ${data.roomId} ${isHost ? '(Host)' : ''}</p>
+        <p>Herný mód: <strong>${gameModeName}</strong></p>
+        ${data.teamMode ? '<p style="color: #3498db;">🛡️ Tímový režim</p>' : '<p style="color: #e67e22;">⚔️ Každý proti každému</p>'}
+    `;
     
     // Show players section
     lobbyPlayers.style.display = 'block';
     
     // Update players list
     playersList.innerHTML = '';
-    data.players.forEach(player => {
-        const isPlayerHost = player.id === data.hostId;
-        const playerDiv = document.createElement('div');
-        playerDiv.className = 'player-item';
-        playerDiv.dataset.playerId = player.id;
+    
+    if (data.teamMode && data.teams) {
+        // Show teams separately
+        const team1Players = data.players.filter(p => p.team === 'team1');
+        const team2Players = data.players.filter(p => p.team === 'team2');
         
-        // Show character and tank info if selected
-        let characterInfo = '';
-        let tankInfo = '';
-        if (player.selectedCharacter) {
-            characterInfo = ` | 👤 ${getCharacterName(player.selectedCharacter)}`;
-        }
-        if (player.selectedTank) {
-            tankInfo = ` | 🚗 ${getTankName(player.selectedTank)}`;
+        // Team 1
+        if (team1Players.length > 0) {
+            const team1Header = document.createElement('div');
+            team1Header.className = 'team-header team1';
+            team1Header.innerHTML = '<h4>🔵 Tím 1</h4>';
+            playersList.appendChild(team1Header);
+            
+            team1Players.forEach(player => {
+                const playerDiv = createPlayerItem(player, data.hostId);
+                playerDiv.classList.add('team1-player');
+                playersList.appendChild(playerDiv);
+            });
         }
         
-        playerDiv.innerHTML = `
-            <span>${player.name} ${player.id === socket.id ? '(Ty)' : ''} ${isPlayerHost ? '👑' : ''}${characterInfo}${tankInfo}</span>
-            <span class="player-status ${player.ready ? 'player-ready' : 'player-waiting'}">
-                ${player.ready ? 'Pripravený' : 'Čaká'}
-            </span>
-        `;
-        playersList.appendChild(playerDiv);
-    });
+        // Team 2
+        if (team2Players.length > 0) {
+            const team2Header = document.createElement('div');
+            team2Header.className = 'team-header team2';
+            team2Header.innerHTML = '<h4>🔴 Tím 2</h4>';
+            playersList.appendChild(team2Header);
+            
+            team2Players.forEach(player => {
+                const playerDiv = createPlayerItem(player, data.hostId);
+                playerDiv.classList.add('team2-player');
+                playersList.appendChild(playerDiv);
+            });
+        }
+    } else {
+        // Show players without teams
+        data.players.forEach(player => {
+            const playerDiv = createPlayerItem(player, data.hostId);
+            playersList.appendChild(playerDiv);
+        });
+    }
+
+function createPlayerItem(player, hostId) {
+    const isPlayerHost = player.id === hostId;
+    const playerDiv = document.createElement('div');
+    playerDiv.className = 'player-item';
+    playerDiv.dataset.playerId = player.id;
+    
+    // Show character and tank info if selected
+    let characterInfo = '';
+    let tankInfo = '';
+    if (player.selectedCharacter) {
+        characterInfo = ` | 👤 ${getCharacterName(player.selectedCharacter)}`;
+    }
+    if (player.selectedTank) {
+        tankInfo = ` | 🚗 ${getTankName(player.selectedTank)}`;
+    }
+    
+    playerDiv.innerHTML = `
+        <span>${player.name} ${player.id === socket.id ? '(Ty)' : ''} ${isPlayerHost ? '👑' : ''}${characterInfo}${tankInfo}</span>
+        <span class="player-status ${player.ready ? 'player-ready' : 'player-waiting'}">
+            ${player.ready ? 'Pripravený' : 'Čaká'}
+        </span>
+    `;
+    
+    return playerDiv;
+}
     
     // Show selection sections if room is full
     if (data.playersCount >= data.maxPlayers) {
@@ -666,6 +728,7 @@ const screens = {
     characterSelection: document.getElementById('character-selection'),
     mapSelection: document.getElementById('map-selection'),
     tankSelection: document.getElementById('tank-selection'),
+    multiplayerModeSelection: document.getElementById('multiplayer-mode-selection'),
     multiplayerLobby: document.getElementById('multiplayer-lobby'),
     game: document.getElementById('game-container'),
     endScreen: document.getElementById('end-screen')
@@ -2113,8 +2176,7 @@ function init() {
     // Event Listeners for menu buttons
     buttons.start.addEventListener('click', () => showScreen('modeSelection'));
     buttons.multiplayer.addEventListener('click', () => {
-        showScreen('multiplayerLobby');
-        initMultiplayer();
+        showScreen('multiplayerModeSelection');
     });
     buttons.tutorial.addEventListener('click', () => showScreen('tutorial'));
     buttons.end.addEventListener('click', () => window.close());
@@ -5015,5 +5077,33 @@ document.head.appendChild(style);
 
 // Call after DOM is ready
 setTimeout(enableCharacterCardKeyboardScroll, 0);
+
+// --- MULTIPLAYER GAME MODE SELECTION ---
+function initMultiplayerModeSelection() {
+    const gameModeCards = document.querySelectorAll('.game-mode-card');
+    
+    gameModeCards.forEach(card => {
+        card.addEventListener('click', () => {
+            const selectedMode = card.dataset.mode;
+            
+            // Remove previous selection
+            gameModeCards.forEach(c => c.classList.remove('selected'));
+            
+            // Add selection to clicked card
+            card.classList.add('selected');
+            
+            // Start multiplayer with selected mode
+            setTimeout(() => {
+                initMultiplayer(selectedMode);
+                showScreen('multiplayerLobby');
+            }, 300);
+        });
+    });
+}
+
+// Initialize multiplayer mode selection when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    initMultiplayerModeSelection();
+});
 
 init();

@@ -893,6 +893,100 @@ button:hover {
     margin: 5px 0 0 0;
 }
 
+/* Multiplayer Game Mode Selection Styles */
+.game-modes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    max-width: 900px;
+    margin: 32px auto;
+    padding: 0 20px;
+}
+
+.game-mode-card {
+    background: rgba(0,0,0,0.7);
+    border: 3px solid #34495e;
+    border-radius: 15px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.game-mode-card:hover {
+    transform: translateY(-8px) scale(1.05);
+    border-color: #3498db;
+    background: rgba(52, 152, 219, 0.1);
+    box-shadow: 0 8px 25px rgba(52, 152, 219, 0.3);
+}
+
+.game-mode-card.selected {
+    border-color: #27ae60;
+    background: rgba(39, 174, 96, 0.15);
+    box-shadow: 0 0 0 4px rgba(39, 174, 96, 0.4), 0 8px 25px rgba(39, 174, 96, 0.3);
+}
+
+.game-mode-card h3 {
+    color: #ecf0f1;
+    font-size: 24px;
+    margin: 0 0 12px 0;
+    font-weight: bold;
+}
+
+.game-mode-card p {
+    color: #bdc3c7;
+    font-size: 16px;
+    margin: 0 0 16px 0;
+    line-height: 1.4;
+}
+
+.mode-info {
+    background: #e67e22;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: bold;
+    margin-top: auto;
+    display: inline-block;
+}
+
+.game-mode-card[data-mode*="2v2"] .mode-info,
+.game-mode-card[data-mode*="3v3"] .mode-info {
+    background: #8e44ad;
+}
+
+.game-mode-card[data-mode*="free-for-all"] .mode-info {
+    background: #e74c3c;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .game-modes-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+        padding: 0 16px;
+    }
+    
+    .game-mode-card {
+        min-height: 140px;
+        padding: 20px;
+    }
+    
+    .game-mode-card h3 {
+        font-size: 20px;
+    }
+    
+    .game-mode-card p {
+        font-size: 14px;
+    }
+}
+
 /* Custom scrollbar for Webkit browsers */
 body::-webkit-scrollbar {
     width: 12px;
@@ -910,5 +1004,45 @@ body::-webkit-scrollbar-thumb {
 
 body::-webkit-scrollbar-thumb:hover {
     background: rgba(255,255,255,0.6);
+}
+
+/* Team styles for lobby */
+.team-header {
+    margin: 16px 0 8px 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.team-header.team1 {
+    background: rgba(52, 152, 219, 0.2);
+    border: 2px solid #3498db;
+}
+
+.team-header.team2 {
+    background: rgba(231, 76, 60, 0.2);
+    border: 2px solid #e74c3c;
+}
+
+.team-header h4 {
+    margin: 0;
+    color: white;
+    font-size: 18px;
+}
+
+.team1-player {
+    border-left: 4px solid #3498db;
+    background: rgba(52, 152, 219, 0.1);
+}
+
+.team2-player {
+    border-left: 4px solid #e74c3c;
+    background: rgba(231, 76, 60, 0.1);
+}
+
+.player-item.team1-player,
+.player-item.team2-player {
+    margin-left: 12px;
+    padding-left: 12px;
 }
 
