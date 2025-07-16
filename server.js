@@ -40,8 +40,9 @@ class GameRoom {
         this.minPlayers = GAME_MODES[gameMode].minPlayers || GAME_MODES[gameMode].maxPlayers;
         this.teamMode = GAME_MODES[gameMode].teamMode;
         this.hostCanStart = GAME_MODES[gameMode].hostCanStart || false;
-        this.gameState = 'waiting'; // waiting, playing, ended
+        this.gameState = 'waiting'; // waiting, selecting, playing, ended
         this.gameData = null;
+        this.selectionPhase = false; // Host can start selection phase in unlimited mode
         this.selectedMap = null; // Selected map by host
         this.hostId = null; // First player becomes host
         this.teams = { team1: [], team2: [] }; // For team-based modes
@@ -151,7 +152,10 @@ io.on('connection', (socket) => {
                 selectedMap: room.selectedMap,
                 gameMode: room.gameMode,
                 teamMode: room.teamMode,
-                teams: room.teams
+                teams: room.teams,
+                hostCanStart: room.hostCanStart,
+                minPlayers: room.minPlayers,
+                selectionPhase: room.selectionPhase
             });
 
             console.log(`Hráč ${player.name} sa pripojil do miestnosti ${room.id} (${room.gameMode})`);
@@ -198,6 +202,14 @@ io.on('connection', (socket) => {
     socket.on('select-character', (characterData) => {
         const room = gameRooms.get(socket.currentRoom);
         if (room) {
+            // For unlimited mode, check if selection phase is active
+            if (room.gameMode === 'unlimited' && !room.selectionPhase) {
+                socket.emit('selection-not-ready', {
+                    message: 'Host ešte nespustil fázu výberu'
+                });
+                return;
+            }
+            
             const player = room.players.find(p => p.id === socket.id);
             if (player) {
                 player.selectedCharacter = characterData.characterId;
@@ -220,7 +232,8 @@ io.on('connection', (socket) => {
                     teamMode: room.teamMode,
                     teams: room.teams,
                     hostCanStart: room.hostCanStart,
-                    minPlayers: room.minPlayers
+                    minPlayers: room.minPlayers,
+                    selectionPhase: room.selectionPhase
                 });
                 
                 console.log(`Hráč ${socket.id} vybral charaktera ${characterData.characterId}`);
@@ -256,10 +269,58 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Host can start selection phase (for unlimited mode)
+    socket.on('host-start-selection', () => {
+        console.log(`Host-start-selection event received from ${socket.id}`);
+        const room = gameRooms.get(socket.currentRoom);
+        console.log(`Room found: ${room ? 'yes' : 'no'}, Current room: ${socket.currentRoom}`);
+        
+        if (room && room.hostId === socket.id && room.hostCanStart && !room.selectionPhase) {
+            console.log(`Host validation passed for ${socket.id}`);
+            // Check if we have minimum players
+            if (room.players.length >= room.minPlayers) {
+                // Lock the player count and start selection phase
+                room.selectionPhase = true;
+                room.maxPlayers = room.players.length; // Lock to current player count
+                
+                console.log(`Host ${socket.id} spúšťa výber v miestnosti ${room.id} pre ${room.players.length} hráčov`);
+                
+                // Notify all players that selection phase has started
+                io.to(room.id).emit('selection-phase-started', {
+                    players: room.players,
+                    roomId: room.id,
+                    playersCount: room.players.length,
+                    maxPlayers: room.maxPlayers,
+                    hostId: room.hostId,
+                    selectedMap: room.selectedMap,
+                    gameMode: room.gameMode,
+                    teamMode: room.teamMode,
+                    teams: room.teams,
+                    hostCanStart: room.hostCanStart,
+                    minPlayers: room.minPlayers,
+                    selectionPhase: room.selectionPhase
+                });
+            } else {
+                // Send error to host - not enough players
+                socket.emit('selection-start-error', {
+                    message: `Potrebujete aspoň ${room.minPlayers} hráčov pre spustenie výberu`
+                });
+            }
+        }
+    });
+
     // Tank selection
     socket.on('select-tank', (tankData) => {
         const room = gameRooms.get(socket.currentRoom);
         if (room) {
+            // For unlimited mode, check if selection phase is active
+            if (room.gameMode === 'unlimited' && !room.selectionPhase) {
+                socket.emit('selection-not-ready', {
+                    message: 'Host ešte nespustil fázu výberu'
+                });
+                return;
+            }
+            
             const player = room.players.find(p => p.id === socket.id);
             if (player) {
                 player.selectedTank = tankData.tankId;
@@ -282,7 +343,8 @@ io.on('connection', (socket) => {
                     teamMode: room.teamMode,
                     teams: room.teams,
                     hostCanStart: room.hostCanStart,
-                    minPlayers: room.minPlayers
+                    minPlayers: room.minPlayers,
+                    selectionPhase: room.selectionPhase
                 });
                 
                 console.log(`Hráč ${socket.id} vybral tank ${tankData.tankId}`);

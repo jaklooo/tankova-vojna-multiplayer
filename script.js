@@ -48,6 +48,7 @@ function initMultiplayer(gameMode = '1v1') {
         console.log('Hráč sa pripojil:', data);
         otherPlayers = data.players.filter(p => p.id !== socket.id);
         isHost = data.hostId === socket.id;
+        currentRoom = data.roomId; // Set current room ID
         selectedLobbyMap = data.selectedMap;
         updateLobbyUI(data);
     });
@@ -90,6 +91,21 @@ function initMultiplayer(gameMode = '1v1') {
     
     socket.on('host-start-error', (data) => {
         console.log('Host start error:', data.message);
+        showLobbyError(data.message);
+    });
+    
+    socket.on('selection-phase-started', (data) => {
+        console.log('Selection phase started:', data);
+        updateLobbyUI(data);
+    });
+    
+    socket.on('selection-start-error', (data) => {
+        console.log('Selection start error:', data.message);
+        showLobbyError(data.message);
+    });
+    
+    socket.on('selection-not-ready', (data) => {
+        console.log('Selection not ready:', data.message);
         showLobbyError(data.message);
     });
 
@@ -269,8 +285,12 @@ function createPlayerItem(player, hostId) {
     return playerDiv;
 }
     
-    // Show selection sections if room is full
-    if (data.playersCount >= data.maxPlayers) {
+    // Show selection sections based on game mode and phase
+    const canShowSelections = data.gameMode === 'unlimited' ? 
+        data.selectionPhase : 
+        (data.playersCount >= data.maxPlayers);
+    
+    if (canShowSelections) {
         characterSelection.style.display = 'block';
         tankSelection.style.display = 'block';
         mapSelection.style.display = 'block';
@@ -286,7 +306,12 @@ function createPlayerItem(player, hostId) {
         mapSelection.style.display = 'none';
         readySection.style.display = 'none';
         waitingDiv.style.display = 'block';
-        waitingDiv.innerHTML = `<p>Čakám na ďalších hráčov... (${data.playersCount}/${data.maxPlayers})</p><div id="waiting-dots">●●●</div>`;
+        
+        if (data.gameMode === 'unlimited' && !data.selectionPhase) {
+            waitingDiv.innerHTML = `<p>Čakám na spustenie výberu od hosta... (${data.playersCount} hráčov pripojených)</p><div id="waiting-dots">●●●</div>`;
+        } else {
+            waitingDiv.innerHTML = `<p>Čakám na ďalších hráčov... (${data.playersCount}/${data.maxPlayers})</p><div id="waiting-dots">●●●</div>`;
+        }
     }
     
     // Show ready button if not ready yet and all selections made
@@ -306,29 +331,80 @@ function createPlayerItem(player, hostId) {
         readyBtn.style.display = 'none';
     }
     
-    // Handle host start button for unlimited mode
+    // Handle host buttons for unlimited mode
+    const hostStartSelectionBtn = document.getElementById('host-start-selection-btn');
     const hostStartBtn = document.getElementById('host-start-game-btn');
-    if (hostStartBtn && isHost && data.gameMode === 'unlimited') {
-        hostStartBtn.style.display = 'block';
-        hostStartBtn.onclick = () => {
-            if (socket && currentRoom) {
-                socket.emit('host-start-game', currentRoom);
+    
+    console.log('UpdateLobbyUI - Unlimited mode check:', data.gameMode === 'unlimited');
+    console.log('UpdateLobbyUI - Is host:', isHost);
+    console.log('UpdateLobbyUI - Selection phase:', data.selectionPhase);
+    console.log('UpdateLobbyUI - Selection button found:', !!hostStartSelectionBtn);
+    
+    if (isHost && data.gameMode === 'unlimited') {
+        if (!data.selectionPhase) {
+            // Show selection start button
+            if (hostStartSelectionBtn) {
+                console.log('Setting up selection start button');
+                hostStartSelectionBtn.style.display = 'block';
+                hostStartSelectionBtn.onclick = () => {
+                    console.log('Selection button clicked, sending event');
+                    console.log('Socket connected:', socket && socket.connected);
+                    console.log('Current room:', currentRoom);
+                    if (socket && currentRoom) {
+                        console.log('Emitting host-start-selection event');
+                        socket.emit('host-start-selection');
+                        console.log('Event emitted');
+                    } else {
+                        console.log('Socket or currentRoom not available:', { socket: !!socket, currentRoom });
+                    }
+                };
+                
+                if (data.players.length >= data.minPlayers) {
+                    hostStartSelectionBtn.disabled = false;
+                    hostStartSelectionBtn.textContent = `Spustiť výber (${data.players.length} hráčov)`;
+                } else {
+                    hostStartSelectionBtn.disabled = true;
+                    hostStartSelectionBtn.textContent = `Potrebujete minimálne ${data.minPlayers} hráčov`;
+                }
             }
-        };
-        
-        // Update button state based on ready players
-        const readyCount = data.players.filter(p => p.ready).length;
-        const minPlayers = 2; // From server GAME_MODES configuration
-        
-        if (readyCount >= minPlayers) {
-            hostStartBtn.disabled = false;
-            hostStartBtn.textContent = `Spustiť hru (${readyCount}/${data.players.length} pripravených)`;
+            
+            if (hostStartBtn) {
+                hostStartBtn.style.display = 'none';
+            }
         } else {
-            hostStartBtn.disabled = true;
-            hostStartBtn.textContent = `Potrebujete minimálne ${minPlayers} pripravených hráčov`;
+            // Selection phase is active, show game start button
+            if (hostStartSelectionBtn) {
+                hostStartSelectionBtn.style.display = 'none';
+            }
+            
+            if (hostStartBtn) {
+                hostStartBtn.style.display = 'block';
+                hostStartBtn.onclick = () => {
+                    if (socket && currentRoom) {
+                        socket.emit('host-start-game');
+                    }
+                };
+                
+                const readyCount = data.players.filter(p => p.ready).length;
+                const minPlayers = data.minPlayers || 2;
+                
+                if (readyCount >= minPlayers) {
+                    hostStartBtn.disabled = false;
+                    hostStartBtn.textContent = `Spustiť hru (${readyCount}/${data.players.length} pripravených)`;
+                } else {
+                    hostStartBtn.disabled = true;
+                    hostStartBtn.textContent = `Potrebujete minimálne ${minPlayers} pripravených hráčov`;
+                }
+            }
         }
-    } else if (hostStartBtn) {
-        hostStartBtn.style.display = 'none';
+    } else {
+        // Hide both buttons for non-hosts or other game modes
+        if (hostStartSelectionBtn) {
+            hostStartSelectionBtn.style.display = 'none';
+        }
+        if (hostStartBtn) {
+            hostStartBtn.style.display = 'none';
+        }
     }
 }
 

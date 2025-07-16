@@ -1098,6 +1098,39 @@ body::-webkit-scrollbar-thumb:hover {
     box-shadow: none;
 }
 
+#host-start-selection-btn {
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(243, 156, 18, 0.3);
+    margin-right: 10px;
+}
+
+#host-start-selection-btn:hover {
+    background: linear-gradient(135deg, #e67e22, #f39c12);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(243, 156, 18, 0.4);
+}
+
+#host-start-selection-btn:disabled {
+    background: #7f8c8d;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+#host-start-selection-btn:disabled:hover {
+    background: #7f8c8d;
+    transform: none;
+    box-shadow: none;
+}
+
 /* Error message styling */
 .lobby-error-message {
     background: rgba(231, 76, 60, 0.9);
