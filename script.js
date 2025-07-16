@@ -8,6 +8,7 @@ let multiplayerTanks = new Map(); // Map to track other players' tanks
 let selectedLobbyMap = null; // Selected map in lobby
 let selectedLobbyCharacter = null; // Selected character in lobby
 let selectedLobbyTank = null; // Selected tank in lobby
+let playerName = ''; // Player's chosen name
 
 // --- MULTIPLAYER OPTIMIZATIONS ---
 let lastNetworkSync = 0;
@@ -32,9 +33,9 @@ function initMultiplayer(gameMode = '1v1') {
         console.log('Pripojený k serveru');
         isMultiplayer = true;
         
-        // Request to join a game with specific mode
+        // Request to join a game with specific mode and player name
         socket.emit('join-game', {
-            name: 'Hráč_' + Math.floor(Math.random() * 1000),
+            name: playerName || 'Hráč_' + Math.floor(Math.random() * 1000),
             gameMode: gameMode
         });
     });
@@ -856,6 +857,7 @@ const screens = {
     characterSelection: document.getElementById('character-selection'),
     mapSelection: document.getElementById('map-selection'),
     tankSelection: document.getElementById('tank-selection'),
+    multiplayerNameEntry: document.getElementById('multiplayer-name-entry'),
     multiplayerModeSelection: document.getElementById('multiplayer-mode-selection'),
     multiplayerLobby: document.getElementById('multiplayer-lobby'),
     game: document.getElementById('game-container'),
@@ -2236,6 +2238,17 @@ function showScreen(screenName) {
     if (screenName === 'tankSelection') {
         drawTankPreviews(); // Ensure previews are drawn when screen is shown
     }
+    
+    if (screenName === 'multiplayerNameEntry') {
+        // Auto-focus the name input field
+        setTimeout(() => {
+            const nameInput = document.getElementById('player-name-input');
+            if (nameInput) {
+                nameInput.focus();
+                nameInput.select(); // Select any existing text
+            }
+        }, 100);
+    }
 }
 
 // --- INITIALIZATION AND GAME START ---
@@ -2304,7 +2317,7 @@ function init() {
     // Event Listeners for menu buttons
     buttons.start.addEventListener('click', () => showScreen('modeSelection'));
     buttons.multiplayer.addEventListener('click', () => {
-        showScreen('multiplayerModeSelection');
+        showScreen('multiplayerNameEntry');
     });
     buttons.tutorial.addEventListener('click', () => showScreen('tutorial'));
     buttons.end.addEventListener('click', () => window.close());
@@ -2796,6 +2809,34 @@ function init() {
             gameState.player.shoot();
         }
     });
+
+    // Name Entry Event Listeners
+    const playerNameInput = document.getElementById('player-name-input');
+    const confirmNameBtn = document.getElementById('confirm-name-btn');
+    
+    if (playerNameInput && confirmNameBtn) {
+        // Enable/disable confirm button based on input
+        playerNameInput.addEventListener('input', () => {
+            const name = playerNameInput.value.trim();
+            confirmNameBtn.disabled = name.length < 2;
+        });
+        
+        // Handle enter key in input
+        playerNameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !confirmNameBtn.disabled) {
+                confirmNameBtn.click();
+            }
+        });
+        
+        // Confirm name and proceed to mode selection
+        confirmNameBtn.addEventListener('click', () => {
+            const name = playerNameInput.value.trim();
+            if (name.length >= 2) {
+                playerName = name;
+                showScreen('multiplayerModeSelection');
+            }
+        });
+    }
 
     // Handle window resize for fullscreen
     window.addEventListener('resize', () => {
