@@ -87,6 +87,11 @@ function initMultiplayer(gameMode = '1v1') {
         console.log('Hra začína:', data);
         startMultiplayerGame(data);
     });
+    
+    socket.on('host-start-error', (data) => {
+        console.log('Host start error:', data.message);
+        showLobbyError(data.message);
+    });
 
     // Handle position updates from other players
     socket.on('player-position', (data) => {
@@ -181,7 +186,8 @@ function updateLobbyUI(data) {
         '3v3': '3 vs 3 (Tímy)',
         'free-for-all-3': 'Voľný súboj (3 hráči)',
         'free-for-all-4': 'Voľný súboj (4 hráči)',
-        'free-for-all-6': 'Voľný súboj (6 hráčov)'
+        'free-for-all-6': 'Voľný súboj (6 hráčov)',
+        'unlimited': 'Neobmedzený (2-16 hráčov)'
     };
     const gameModeName = gameModeNames[data.gameMode] || data.gameMode;
     
@@ -299,6 +305,52 @@ function createPlayerItem(player, hostId) {
     } else {
         readyBtn.style.display = 'none';
     }
+    
+    // Handle host start button for unlimited mode
+    const hostStartBtn = document.getElementById('host-start-game-btn');
+    if (hostStartBtn && isHost && data.gameMode === 'unlimited') {
+        hostStartBtn.style.display = 'block';
+        hostStartBtn.onclick = () => {
+            if (socket && currentRoom) {
+                socket.emit('host-start-game', currentRoom);
+            }
+        };
+        
+        // Update button state based on ready players
+        const readyCount = data.players.filter(p => p.ready).length;
+        const minPlayers = 2; // From server GAME_MODES configuration
+        
+        if (readyCount >= minPlayers) {
+            hostStartBtn.disabled = false;
+            hostStartBtn.textContent = `Spustiť hru (${readyCount}/${data.players.length} pripravených)`;
+        } else {
+            hostStartBtn.disabled = true;
+            hostStartBtn.textContent = `Potrebujete minimálne ${minPlayers} pripravených hráčov`;
+        }
+    } else if (hostStartBtn) {
+        hostStartBtn.style.display = 'none';
+    }
+}
+
+// Show error message in lobby
+function showLobbyError(message) {
+    let errorDiv = document.querySelector('.lobby-error-message');
+    if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.className = 'lobby-error-message';
+        const lobbyControls = document.querySelector('.lobby-bottom-controls');
+        if (lobbyControls) {
+            lobbyControls.parentNode.insertBefore(errorDiv, lobbyControls);
+        }
+    }
+    
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    
+    // Hide error after 5 seconds
+    setTimeout(() => {
+        errorDiv.style.display = 'none';
+    }, 5000);
 }
 
 // Initialize character selection in lobby

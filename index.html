@@ -85,6 +85,12 @@
                     <p>Každý proti každému</p>
                     <span class="mode-info">6 hráčov</span>
                 </div>
+                
+                <div class="game-mode-card" data-mode="unlimited">
+                    <h3>Neobmedzený</h3>
+                    <p>Voľný súboj s flexibilným počtom hráčov</p>
+                    <span class="mode-info">2-16 hráčov</span>
+                </div>
             </div>
             
             <button class="back-to-menu">Späť do Menu</button>
@@ -373,7 +379,11 @@
                 <p>Čakám na ďalších hráčov...</p>
                 <div id="waiting-dots">●●●</div>
             </div>
-            <button class="back-to-menu">Späť do Menu</button>
+            
+            <div class="lobby-bottom-controls">
+                <button class="back-to-menu">Späť do Menu</button>
+                <button id="host-start-game-btn" style="display:none;">Spustiť hru</button>
+            </div>
         </div>
 
         <!-- Výber mapy po výbere charakteru -->

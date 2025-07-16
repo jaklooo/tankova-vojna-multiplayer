@@ -965,6 +965,17 @@ button:hover {
     background: #e74c3c;
 }
 
+/* Unlimited game mode styling */
+.game-mode-card[data-mode="unlimited"] .mode-info {
+    background: linear-gradient(45deg, #3498db, #9b59b6);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .game-modes-grid {
@@ -1044,5 +1055,71 @@ body::-webkit-scrollbar-thumb:hover {
 .player-item.team2-player {
     margin-left: 12px;
     padding-left: 12px;
+}
+
+/* Lobby bottom controls */
+.lobby-bottom-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    gap: 20px;
+}
+
+#host-start-game-btn {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(39, 174, 96, 0.3);
+}
+
+#host-start-game-btn:hover {
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(39, 174, 96, 0.4);
+}
+
+#host-start-game-btn:disabled {
+    background: #7f8c8d;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+#host-start-game-btn:disabled:hover {
+    background: #7f8c8d;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Error message styling */
+.lobby-error-message {
+    background: rgba(231, 76, 60, 0.9);
+    color: white;
+    padding: 12px;
+    border-radius: 8px;
+    margin: 10px 0;
+    text-align: center;
+    font-weight: bold;
+    display: none;
+}
+
+/* Responsive adjustments for lobby controls */
+@media (max-width: 768px) {
+    .lobby-bottom-controls {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    #host-start-game-btn {
+        order: -1;
+        width: 100%;
+    }
 }
 

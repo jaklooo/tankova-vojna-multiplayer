@@ -26,7 +26,8 @@ const GAME_MODES = {
     '3v3': { maxPlayers: 6, teamMode: true },
     'free-for-all-3': { maxPlayers: 3, teamMode: false },
     'free-for-all-4': { maxPlayers: 4, teamMode: false },
-    'free-for-all-6': { maxPlayers: 6, teamMode: false }
+    'free-for-all-6': { maxPlayers: 6, teamMode: false },
+    'unlimited': { maxPlayers: 16, minPlayers: 2, teamMode: false, hostCanStart: true }
 };
 
 // Room structure
@@ -36,7 +37,9 @@ class GameRoom {
         this.players = [];
         this.gameMode = gameMode;
         this.maxPlayers = GAME_MODES[gameMode].maxPlayers;
+        this.minPlayers = GAME_MODES[gameMode].minPlayers || GAME_MODES[gameMode].maxPlayers;
         this.teamMode = GAME_MODES[gameMode].teamMode;
+        this.hostCanStart = GAME_MODES[gameMode].hostCanStart || false;
         this.gameState = 'waiting'; // waiting, playing, ended
         this.gameData = null;
         this.selectedMap = null; // Selected map by host
@@ -212,10 +215,43 @@ io.on('connection', (socket) => {
                     playersCount: room.players.length,
                     maxPlayers: room.maxPlayers,
                     hostId: room.hostId,
-                    selectedMap: room.selectedMap
+                    selectedMap: room.selectedMap,
+                    gameMode: room.gameMode,
+                    teamMode: room.teamMode,
+                    teams: room.teams,
+                    hostCanStart: room.hostCanStart,
+                    minPlayers: room.minPlayers
                 });
                 
                 console.log(`Hráč ${socket.id} vybral charaktera ${characterData.characterId}`);
+            }
+        }
+    });
+
+    // Host can manually start game (for unlimited mode)
+    socket.on('host-start-game', () => {
+        const room = gameRooms.get(socket.currentRoom);
+        if (room && room.hostId === socket.id && room.hostCanStart) {
+            // Check if we have minimum players and all are ready
+            if (room.players.length >= room.minPlayers) {
+                const allReady = room.players.every(p => 
+                    p.ready && p.selectedCharacter && p.selectedTank
+                );
+                
+                if (allReady) {
+                    console.log(`Host ${socket.id} spúšťa hru v miestnosti ${room.id} s ${room.players.length} hráčmi`);
+                    startGame(room);
+                } else {
+                    // Send error to host - not all players ready
+                    socket.emit('start-game-error', {
+                        message: 'Nie všetci hráči sú pripravení'
+                    });
+                }
+            } else {
+                // Send error to host - not enough players
+                socket.emit('start-game-error', {
+                    message: `Potrebujete aspoň ${room.minPlayers} hráčov`
+                });
             }
         }
     });
@@ -241,7 +277,12 @@ io.on('connection', (socket) => {
                     playersCount: room.players.length,
                     maxPlayers: room.maxPlayers,
                     hostId: room.hostId,
-                    selectedMap: room.selectedMap
+                    selectedMap: room.selectedMap,
+                    gameMode: room.gameMode,
+                    teamMode: room.teamMode,
+                    teams: room.teams,
+                    hostCanStart: room.hostCanStart,
+                    minPlayers: room.minPlayers
                 });
                 
                 console.log(`Hráč ${socket.id} vybral tank ${tankData.tankId}`);
@@ -605,6 +646,32 @@ function generatePlayerSpawnPositions(players, arenaWidth, arenaHeight, obstacle
                 character: players[i].selectedCharacter || 'jaccelini'
             };
         }
+    } else {
+        // Unlimited mode or larger groups - circular formation
+        const centerX = arenaWidth / 2;
+        const centerY = arenaHeight / 2;
+        const baseRadius = Math.min(arenaWidth, arenaHeight) * 0.25;
+        
+        // For more than 8 players, create multiple rings
+        const playersPerRing = Math.min(8, playerCount);
+        const numRings = Math.ceil(playerCount / playersPerRing);
+        
+        let playerIndex = 0;
+        for (let ring = 0; ring < numRings && playerIndex < playerCount; ring++) {
+            const ringRadius = baseRadius + (ring * 150); // Each ring 150px further
+            const playersInThisRing = Math.min(playersPerRing, playerCount - playerIndex);
+            
+            for (let i = 0; i < playersInThisRing; i++) {
+                const angle = (i * 2 * Math.PI) / playersInThisRing;
+                positions[players[playerIndex].id] = {
+                    x: centerX + Math.cos(angle) * ringRadius,
+                    y: centerY + Math.sin(angle) * ringRadius,
+                    tankType: players[playerIndex].selectedTank || 'purple',
+                    character: players[playerIndex].selectedCharacter || 'jaccelini'
+                };
+                playerIndex++;
+            }
+        }
     }
     
     return positions;
@@ -630,7 +697,8 @@ function getGameModeName(mode) {
         '3v3': '3 vs 3 (Tímy)',
         'free-for-all-3': 'Voľný súboj (3 hráči)',
         'free-for-all-4': 'Voľný súboj (4 hráči)',
-        'free-for-all-6': 'Voľný súboj (6 hráčov)'
+        'free-for-all-6': 'Voľný súboj (6 hráčov)',
+        'unlimited': 'Neobmedzený (2-16 hráčov)'
     };
     return names[mode] || mode;
 }
@@ -642,7 +710,8 @@ function getGameModeDescription(mode) {
         '3v3': 'Tímový súboj tri proti trom',
         'free-for-all-3': 'Každý proti každému - 3 hráči',
         'free-for-all-4': 'Každý proti každému - 4 hráči',
-        'free-for-all-6': 'Každý proti každému - 6 hráčov'
+        'free-for-all-6': 'Každý proti každému - 6 hráčov',
+        'unlimited': 'Voľný súboj - host môže spustiť hru od 2 do 16 hráčov'
     };
     return descriptions[mode] || 'Popis nie je dostupný';
 }
