@@ -8,6 +8,38 @@
 </head>
 <body>
 
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen active">
+        <div class="loading-container">
+            <div class="loading-logo">
+                <h1>🚗 Tanková Vojna 🚗</h1>
+            </div>
+            <div class="loading-progress">
+                <div class="loading-bar">
+                    <div id="loading-progress-fill" class="loading-progress-fill"></div>
+                </div>
+                <p id="loading-text" class="loading-text">Načítavame hru...</p>
+                <div class="loading-percentage" id="loading-percentage">0%</div>
+            </div>
+            <div class="loading-animation">
+                <div class="tank-loader">
+                    <div class="tank-body"></div>
+                    <div class="tank-turret"></div>
+                    <div class="tank-cannon"></div>
+                    <div class="tank-tracks">
+                        <div class="track track-left"></div>
+                        <div class="track track-right"></div>
+                    </div>
+                </div>
+                <div class="loading-dots">
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <video id="intro-video" class="intro-video" preload="auto" muted playsinline>
         <source src="intro.mp4" type="video/mp4">
         Tvoj prehliadač nepodporuje HTML5 video.

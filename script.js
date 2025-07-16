@@ -875,6 +875,7 @@ function showEliminationNotification(charKey, teamLeaderKey) {
 }
 // --- DOM ELEMENT SELECTION ---
 const screens = {
+    loadingScreen: document.getElementById('loading-screen'),
     mainMenu: document.getElementById('main-menu'),
     tutorial: document.getElementById('tutorial-screen'),
     modeSelection: document.getElementById('mode-selection'),
@@ -1045,7 +1046,7 @@ const CHARACTERS = {
 
 // --- GAME STATE ---
 let gameState = {
-    currentScreen: 'intro', // Default screen is now 'intro'
+    currentScreen: 'loading', // Default screen is now 'loading'
     player: null,
     allies: [],
     enemies: [],
@@ -1108,69 +1109,41 @@ function loadImage(name, src) {
     });
 }
 
+function assignLoadedAssets() {
+    // Assign loaded images to game state
+    gameState.grassTexture = images['grass_texture'];
+    gameState.mudTexture = images['mud_texture'];
+    gameState.treeTexture = images['tree_texture'];
+    gameState.rockTexture = images['rock_texture'];
+    gameState.coinTexture = images['coin_icon'];
+    gameState.dessertTexture = images['dessert_texture'];
+    gameState.iceTexture = images['ice_texture'];
+    gameState.igluImage = images['iglu'];
+    
+    // Set background images
+    document.getElementById('main-menu').style.backgroundImage = `url(${images['menu_background'].src})`;
+    document.getElementById('character-selection').style.backgroundImage = `url(${images['menu_background'].src})`;
+
+    // Assign tank images
+    for (const type in TANK_SPECS) {
+        gameState.tankImages[type] = images[`tank_${type}`];
+        gameState.canonImages[type] = images[`canon_${type}`];
+    }
+
+    // Assign character images
+    for (const charKey in CHARACTERS) {
+        gameState.charImages[charKey] = images[`char_${charKey}`];
+    }
+}
+
 const loadAssets = async () => {
     try {
-        // Load background texture
-        await loadImage('menu_background', 'menu_background.png');
-
-        // Map 1 assets
-        await loadImage('grass_texture', 'grass_texture.png');
-        await loadImage('mud_texture', 'mud_texture.png');
-        await loadImage('tree_texture', 'tree_texture.png');
-        await loadImage('rock_texture', 'rock_texture.png');
-        await loadImage('coin_icon', 'coin.png');
-
-        // Map 2 assets
-        await loadImage('dessert_texture', 'dessert.jpg');
-        await loadImage('oilrig', 'oilrig.png');
-
-        // Map 3 assets
-        await loadImage('ice_texture', 'ice.png');
-        await loadImage('iglu', 'IGLU.png');
-
-        // Load bullet image
-        await loadImage('bullet', 'bullet.png');
-        await loadImage('bullet2', 'bullet2.png');
-
-        // Load snowball image for eskimo bullets
-        await loadImage('snowball', 'snehovgula.png');
-
-        // Load tank images
-        for (const type in TANK_SPECS) {
-            await loadImage(`tank_${type}`, TANK_SPECS[type].tankImage);
-            await loadImage(`canon_${type}`, TANK_SPECS[type].canonImage);
-        }
-
-        // NOVINKA: Load character images
-        for (const charKey in CHARACTERS) {
-            await loadImage(`char_${charKey}`, CHARACTERS[charKey].image);
-        }
-
-        gameState.grassTexture = images['grass_texture'];
-        gameState.mudTexture = images['mud_texture'];
-        gameState.treeTexture = images['tree_texture'];
-        gameState.rockTexture = images['rock_texture'];
-        gameState.coinTexture = images['coin_icon'];
-        gameState.dessertTexture = images['dessert_texture'];
-        gameState.iceTexture = images['ice_texture'];
-        gameState.igluImage = images['iglu'];
-        document.getElementById('main-menu').style.backgroundImage = `url(${images['menu_background'].src})`;
-        document.getElementById('character-selection').style.backgroundImage = `url(${images['menu_background'].src})`;
-
-        for (const type in TANK_SPECS) {
-            gameState.tankImages[type] = images[`tank_${type}`];
-            gameState.canonImages[type] = images[`canon_${type}`];
-        }
-
-        // Assign loaded character images
-        for (const charKey in CHARACTERS) {
-            gameState.charImages[charKey] = images[`char_${charKey}`];
-        }
-
+        // This function is now just a legacy wrapper
+        // The actual loading is done by loadGameWithProgress()
         console.log('Assets loaded successfully!');
     } catch (error) {
         console.error('Failed to load assets:', error);
-        alert('Chyba pri načítaní herných súborov! Skontrolujte konzolu pre detaily.'); // User friendly message
+        alert('Chyba pri načítaní herných súborov! Skontrolujte konzolu pre detaily.');
     }
 };
 
@@ -2275,8 +2248,148 @@ function showScreen(screenName) {
     }
 }
 
+// --- LOADING SCREEN LOGIC ---
+let loadingProgress = 0;
+let loadingSteps = [];
+let currentLoadingStep = 0;
+
+function initLoadingScreen() {
+    const loadingScreen = document.getElementById('loading-screen');
+    const progressFill = document.getElementById('loading-progress-fill');
+    const loadingText = document.getElementById('loading-text');
+    const loadingPercentage = document.getElementById('loading-percentage');
+
+    if (!loadingScreen) return;
+
+    // Define loading steps
+    loadingSteps = [
+        { name: 'Inicializujeme hru...', duration: 500 },
+        { name: 'Načítavame textúry...', duration: 1000 },
+        { name: 'Načítavame postavy...', duration: 800 },
+        { name: 'Načítavame tanky...', duration: 600 },
+        { name: 'Načítavame zvuky...', duration: 400 },
+        { name: 'Načítavame intro video...', duration: 800 },
+        { name: 'Príprava dokončená!', duration: 300 }
+    ];
+
+    loadingScreen.classList.add('active');
+    return { progressFill, loadingText, loadingPercentage };
+}
+
+function updateLoadingProgress(progress, text) {
+    const progressFill = document.getElementById('loading-progress-fill');
+    const loadingText = document.getElementById('loading-text');
+    const loadingPercentage = document.getElementById('loading-percentage');
+
+    if (progressFill) progressFill.style.width = `${progress}%`;
+    if (loadingText && text) loadingText.textContent = text;
+    if (loadingPercentage) loadingPercentage.textContent = `${Math.round(progress)}%`;
+}
+
+function hideLoadingScreen() {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+        loadingScreen.classList.remove('active');
+        setTimeout(() => {
+            loadingScreen.style.display = 'none';
+        }, 500);
+    }
+}
+
+async function loadGameWithProgress() {
+    const totalSteps = loadingSteps.length;
+    
+    for (let i = 0; i < totalSteps; i++) {
+        const step = loadingSteps[i];
+        const progress = (i / totalSteps) * 90; // Reserve 90% for steps, 10% for final video check
+        
+        updateLoadingProgress(progress, step.name);
+        
+        // Simulate loading time
+        await new Promise(resolve => setTimeout(resolve, step.duration));
+        
+        // Actually load assets during appropriate steps
+        if (i === 1) { // Načítavame textúry
+            await loadTextureAssets();
+        } else if (i === 2) { // Načítavame postavy
+            await loadCharacterAssets();
+        } else if (i === 3) { // Načítavame tanky
+            await loadTankAssets();
+        } else if (i === 4) { // Načítavame zvuky
+            await loadAudioAssets();
+        } else if (i === 5) { // Načítavame intro video
+            await preloadVideo();
+        }
+    }
+    
+    // Final loading completion
+    updateLoadingProgress(100, 'Hotovo!');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    hideLoadingScreen();
+    return true;
+}
+
+async function loadTextureAssets() {
+    // Load textures
+    await loadImage('menu_background', 'menu_background.png');
+    await loadImage('grass_texture', 'grass_texture.png');
+    await loadImage('mud_texture', 'mud_texture.png');
+    await loadImage('tree_texture', 'tree_texture.png');
+    await loadImage('rock_texture', 'rock_texture.png');
+    await loadImage('coin_icon', 'coin.png');
+    await loadImage('dessert_texture', 'dessert.jpg');
+    await loadImage('oilrig', 'oilrig.png');
+    await loadImage('ice_texture', 'ice.png');
+    await loadImage('iglu', 'IGLU.png');
+    await loadImage('bullet', 'bullet.png');
+    await loadImage('bullet2', 'bullet2.png');
+    await loadImage('snowball', 'snehovgula.png');
+}
+
+async function loadCharacterAssets() {
+    // Load character images
+    for (const charKey in CHARACTERS) {
+        await loadImage(`char_${charKey}`, CHARACTERS[charKey].image);
+    }
+}
+
+async function loadTankAssets() {
+    // Load tank images
+    for (const type in TANK_SPECS) {
+        await loadImage(`tank_${type}`, TANK_SPECS[type].tankImage);
+        await loadImage(`canon_${type}`, TANK_SPECS[type].canonImage);
+    }
+}
+
+async function loadAudioAssets() {
+    // Audio preloading is handled by HTML preload attribute
+    // Just wait a bit for them to load
+    return new Promise(resolve => setTimeout(resolve, 200));
+}
+
+async function preloadVideo() {
+    const introVideo = document.getElementById('intro-video');
+    if (introVideo) {
+        return new Promise(resolve => {
+            if (introVideo.readyState >= 3) {
+                // Video is already loaded enough to play
+                resolve();
+            } else {
+                introVideo.addEventListener('canplaythrough', resolve, { once: true });
+                introVideo.addEventListener('error', resolve, { once: true }); // Continue even if video fails
+                // Fallback timeout
+                setTimeout(resolve, 2000);
+            }
+        });
+    }
+}
+
 // --- INITIALIZATION AND GAME START ---
 function init() {
+    // Start loading screen immediately
+    initLoadingScreen();
+    
     // Bullet selection UI logic
     if (bulletSelectionUI) {
         bulletSelectionUI.addEventListener('click', (e) => {
@@ -2302,7 +2415,9 @@ function init() {
             }
         }
     });
-    loadAssets().then(() => {
+
+    // Load game with progress bar
+    loadGameWithProgress().then(() => {
         // Set initial app container size for main menu (fullscreen)
         appContainer.style.width = `${window.innerWidth}px`;
         appContainer.style.height = `${window.innerHeight}px`;
@@ -2310,7 +2425,10 @@ function init() {
         // Load initial coins from localStorage
         loadCoins();
 
-        // --- NEW: Handle intro video ---
+        // Assign loaded assets to game state
+        assignLoadedAssets();
+
+        // --- Handle intro video ---
         const introVideo = document.getElementById('intro-video');
         if (introVideo) {
             // Hide all other screens initially
@@ -2335,6 +2453,10 @@ function init() {
             console.warn("Intro video element not found. Showing main menu directly.");
             showScreen('mainMenu');
         }
+    }).catch(error => {
+        console.error("Loading failed:", error);
+        hideLoadingScreen();
+        showScreen('mainMenu');
     });
 
 
