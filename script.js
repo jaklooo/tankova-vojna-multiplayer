@@ -12,7 +12,7 @@ let selectedLobbyTank = null; // Selected tank in lobby
 // --- MULTIPLAYER OPTIMIZATIONS ---
 let lastNetworkSync = 0;
 const NETWORK_SYNC_INTERVAL = 150; // Send position updates every 150ms for better performance (6.7 FPS)
-const MULTIPLAYER_TARGET_FPS = 50; // Increased FPS for better multiplayer experience
+const MULTIPLAYER_TARGET_FPS = 60; // Full FPS for smooth multiplayer experience
 const MULTIPLAYER_FRAME_TIME = 1000 / MULTIPLAYER_TARGET_FPS;
 const EFFECTS_REDUCTION_FACTOR = 0.3; // Reduce visual effects in multiplayer
 const MAX_PARTICLES_MULTIPLAYER = 15; // Limit particles in multiplayer
