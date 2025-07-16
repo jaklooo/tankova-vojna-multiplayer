@@ -12,7 +12,7 @@ let playerName = ''; // Player's chosen name
 
 // --- MULTIPLAYER OPTIMIZATIONS ---
 let lastNetworkSync = 0;
-const NETWORK_SYNC_INTERVAL = 150; // Send position updates every 150ms for better performance (6.7 FPS)
+const NETWORK_SYNC_INTERVAL = 70; // Optimized to 70ms (~14 FPS) for very smooth movement
 const MULTIPLAYER_TARGET_FPS = 60; // Full FPS for smooth multiplayer experience
 const MULTIPLAYER_FRAME_TIME = 1000 / MULTIPLAYER_TARGET_FPS;
 const EFFECTS_REDUCTION_FACTOR = 0.3; // Reduce visual effects in multiplayer
@@ -114,10 +114,21 @@ function initMultiplayer(gameMode = '1v1') {
     socket.on('player-position', (data) => {
         const otherTank = multiplayerTanks.get(data.playerId);
         if (otherTank) {
-            otherTank.x = data.x;
-            otherTank.y = data.y;
-            otherTank.angle = data.angle;
-            otherTank.turretAbsoluteAngle = data.turretAngle;
+            // Store previous position for interpolation
+            otherTank.prevX = otherTank.x;
+            otherTank.prevY = otherTank.y;
+            otherTank.prevAngle = otherTank.angle;
+            otherTank.prevTurretAngle = otherTank.turretAbsoluteAngle;
+            
+            // Store target position
+            otherTank.targetX = data.x;
+            otherTank.targetY = data.y;
+            otherTank.targetAngle = data.angle;
+            otherTank.targetTurretAngle = data.turretAngle;
+            
+            // Reset interpolation timer
+            otherTank.interpolationTime = 0;
+            otherTank.lastUpdateTime = Date.now();
         }
     });
 
@@ -750,6 +761,19 @@ function startMultiplayerGame(data) {
             gameState.selectedPlayerChar = CHARACTERS[characterKey];
         } else {
             tank.isMultiplayerOpponent = true;
+            
+            // Add interpolation properties for smooth movement
+            tank.prevX = tank.x;
+            tank.prevY = tank.y;
+            tank.prevAngle = tank.angle;
+            tank.prevTurretAngle = tank.turretAbsoluteAngle;
+            tank.targetX = tank.x;
+            tank.targetY = tank.y;
+            tank.targetAngle = tank.angle;
+            tank.targetTurretAngle = tank.turretAbsoluteAngle;
+            tank.interpolationTime = 0;
+            tank.lastUpdateTime = Date.now();
+            
             gameState.enemies.push(tank);
         }
         
@@ -3286,9 +3310,72 @@ function gameLoop() {
     }
 }
 
+// Helper function to interpolate angles correctly (handles wrap-around)
+function interpolateAngle(from, to, progress) {
+    // Normalize angles to 0-2π range
+    from = ((from % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI);
+    to = ((to % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI);
+    
+    // Calculate the shortest angular distance
+    let diff = to - from;
+    if (diff > Math.PI) {
+        diff -= 2 * Math.PI;
+    } else if (diff < -Math.PI) {
+        diff += 2 * Math.PI;
+    }
+    
+    return from + diff * progress;
+}
+
 // --- UPDATE (Game Logic) ---
 function update() {
     if(gameState.roundOver) return;
+
+    // Interpolate multiplayer opponents for smooth movement
+    if (isMultiplayer) {
+        multiplayerTanks.forEach((tank, playerId) => {
+            if (tank.isMultiplayerOpponent && tank.targetX !== undefined) {
+                const now = Date.now();
+                tank.interpolationTime += 16; // Assume ~60fps (16ms per frame)
+                
+                // Interpolation progress (0 to 1 over NETWORK_SYNC_INTERVAL)
+                let progress = Math.min(tank.interpolationTime / NETWORK_SYNC_INTERVAL, 1);
+                
+                // If we're past the expected update time, use extrapolation
+                if (progress >= 1) {
+                    const timeSinceLastUpdate = now - tank.lastUpdateTime;
+                    if (timeSinceLastUpdate > NETWORK_SYNC_INTERVAL) {
+                        // Gentle extrapolation - continue movement in the same direction
+                        const extrapolationFactor = Math.min((timeSinceLastUpdate - NETWORK_SYNC_INTERVAL) / NETWORK_SYNC_INTERVAL, 0.5);
+                        const moveX = tank.targetX - tank.prevX;
+                        const moveY = tank.targetY - tank.prevY;
+                        
+                        tank.x = tank.targetX + moveX * extrapolationFactor;
+                        tank.y = tank.targetY + moveY * extrapolationFactor;
+                        tank.angle = tank.targetAngle;
+                        tank.turretAbsoluteAngle = tank.targetTurretAngle;
+                    } else {
+                        // Just use target position
+                        tank.x = tank.targetX;
+                        tank.y = tank.targetY;
+                        tank.angle = tank.targetAngle;
+                        tank.turretAbsoluteAngle = tank.targetTurretAngle;
+                    }
+                } else {
+                    // Smooth interpolation using easing
+                    const ease = 1 - Math.pow(1 - progress, 3); // Ease-out cubic
+                    
+                    // Interpolate position
+                    tank.x = tank.prevX + (tank.targetX - tank.prevX) * ease;
+                    tank.y = tank.prevY + (tank.targetY - tank.prevY) * ease;
+                    
+                    // Interpolate angles (handle wrapping)
+                    tank.angle = interpolateAngle(tank.prevAngle, tank.targetAngle, ease);
+                    tank.turretAbsoluteAngle = interpolateAngle(tank.prevTurretAngle, tank.targetTurretAngle, ease);
+                }
+            }
+        });
+    }
 
     // Player movement (only if player tank exists)
     if (gameState.player) {
