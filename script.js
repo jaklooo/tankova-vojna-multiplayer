@@ -834,8 +834,7 @@ if (pauseContinueBtn) pauseContinueBtn.onclick = () => {
     }
 };
 if (pauseExitBtn) pauseExitBtn.onclick = () => {
-    // Full reload to reset the game as if freshly opened
-    window.location.reload();
+    returnToMainMenu();
 };
 
 window.addEventListener('keydown', (e) => {
@@ -2468,8 +2467,7 @@ function init() {
     buttons.tutorial.addEventListener('click', () => showScreen('tutorial'));
     buttons.end.addEventListener('click', () => window.close());
     buttons.backToMenu.forEach(btn => btn.addEventListener('click', () => {
-        // Full reload to reset the game as if freshly opened
-        window.location.reload();
+        returnToMainMenu();
     }));
 
     // Event Listeners for game mode selection
@@ -2698,15 +2696,10 @@ function init() {
     showScreen = function(screenName) {
         origShowScreen(screenName);
         if (screenName === 'characterSelection') {
-            resetCharacterSelection();
-            // Set maxAllies based on mode
-            const mode = gameState.currentMode || '1v1';
-            maxAllies = GAME_MODES[mode]?.allyCount || 0;
-            selectionInProgress = true;
-            updateAllyCounter(0, maxAllies);
-            // Reset heading
-            const heading = document.querySelector('#character-selection h2');
-            if (heading) heading.textContent = 'Vyber Si Svojho Veliteľa';
+            // Reinitialize character selection when showing the screen
+            setTimeout(() => {
+                reinitializeCharacterSelection();
+            }, 100);
         }
     };
 
@@ -5477,6 +5470,558 @@ function initMultiplayerModeSelection() {
             }, 300);
         });
     });
+}
+
+// --- SOFT RESET SYSTEM ---
+function resetGameState() {
+    // Preserve coins
+    const savedCoins = gameState.playerCoins;
+    
+    // Reset all game variables except coins
+    gameState.player = null;
+    gameState.allies = [];
+    gameState.enemies = [];
+    gameState.bullets = [];
+    gameState.obstacles = [];
+    gameState.tracks = [];
+    gameState.particles = [];
+    gameState.shotEffects = [];
+    gameState.hitEffects = [];
+    gameState.chasingSquares = [];
+    gameState.keys = {};
+    gameState.playerScore = 0;
+    gameState.enemyScore = 0;
+    gameState.roundOver = false;
+    gameState.currentMode = null;
+    gameState.arenaWidth = 0;
+    gameState.arenaHeight = 0;
+    gameState.cameraX = 0;
+    gameState.cameraY = 0;
+    gameState.cameraZoom = 1;
+    gameState.teamIndicatorPulse = 0;
+    gameState.isSpectating = false;
+    gameState.selectedPlayerChar = null;
+    gameState.selectedEnemyChar = null;
+    gameState.lastAiPositionCheck = Date.now();
+    gameState.selectedBulletType = 1;
+    
+    // Restore coins
+    gameState.playerCoins = savedCoins;
+    
+    // Clear any intervals/animations
+    if (gameState.gameInterval) {
+        clearInterval(gameState.gameInterval);
+        gameState.gameInterval = null;
+    }
+    if (gameState.animationFrameId) {
+        cancelAnimationFrame(gameState.animationFrameId);
+        gameState.animationFrameId = null;
+    }
+    
+    // Reset multiplayer state
+    isMultiplayer = false;
+    currentRoom = null;
+    otherPlayers = [];
+    isHost = false;
+    multiplayerTanks.clear();
+    selectedLobbyMap = null;
+    selectedLobbyCharacter = null;
+    selectedLobbyTank = null;
+    playerName = '';
+    
+    // Disconnect socket if connected
+    if (socket && socket.connected) {
+        socket.disconnect();
+        socket = null;
+    }
+    
+    // Hide pause menu if visible
+    if (pauseMenu) pauseMenu.style.display = 'none';
+    isPaused = false;
+    
+    // Save coins to localStorage
+    saveCoins();
+    
+    console.log('Game state reset, coins preserved:', savedCoins);
+}
+
+function returnToMainMenu() {
+    // Reset game state
+    resetGameState();
+    
+    // Show main menu
+    showScreen('mainMenu');
+    
+    // Update app container for menu
+    appContainer.style.width = `${window.innerWidth}px`;
+    appContainer.style.height = `${window.innerHeight}px`;
+    
+    // Hide canvas
+    if (canvas) {
+        canvas.style.display = 'none';
+    }
+    
+    console.log('Returned to main menu');
+}
+
+function reinitializeCharacterSelection() {
+    // Get ally counter element and define update function early
+    const allyCounter = document.getElementById('character-ally-counter');
+    function updateAllyCounter(selected, max) {
+        if (!allyCounter) return;
+        if (max === 0) {
+            allyCounter.textContent = '';
+            allyCounter.style.display = 'none';
+        } else {
+            allyCounter.textContent = `Spolubojovníci: ${selected} / ${max}`;
+            allyCounter.style.display = 'block';
+        }
+    }
+    
+    // Reset all character selection state directly (since resetCharacterSelection is local to init())
+    let commanderSelected = false;
+    let selectedCommanderKey = null;
+    let selectedAllies = [];
+    let maxAllies = 0;
+    let selectionInProgress = false;
+    
+    // Reset enemy selection variables
+    let enemyCommanderSelected = false;
+    let enemySelectedCommanderKey = null;
+    let enemySelectedAllies = [];
+    let enemyMaxAllies = 0;
+    let enemySelectionInProgress = false;
+    
+    // Clear all character cards
+    const characterCards = document.querySelectorAll('.character-card');
+    characterCards.forEach(card => {
+        card.classList.remove('commander-selected', 'ally-selected', 'locked', 'dimmed', 'selected-commander', 'selected-ally', 'selected-enemy-commander', 'selected-enemy-ally', 'random-selected');
+        card.style.filter = '';
+        card.style.pointerEvents = '';
+        card.style.display = ''; // Make sure all cards are visible
+    });
+    
+    // Set maxAllies based on current mode
+    const mode = gameState.currentMode || '1v1';
+    maxAllies = GAME_MODES[mode]?.allyCount || 0;
+    selectionInProgress = true;
+    
+    // Update ally counter and initialize
+    if (allyCounter) {
+        updateAllyCounter(0, maxAllies);
+    }
+    
+    // Reset heading
+    const heading = document.querySelector('#character-selection h2');
+    if (heading) heading.textContent = 'Vyber Si Svojho Veliteľa';
+    
+    // Re-get references to elements
+    const dalejBtn = document.getElementById('character-dalej-btn');
+    
+    if (!characterCards.length || !dalejBtn) {
+        console.warn('Character selection elements not found during reinitialization');
+        return;
+    }
+    
+    // Enable dalej button initially if no allies needed
+    if (maxAllies === 0) {
+        dalejBtn.disabled = false;
+    } else {
+        dalejBtn.disabled = true;
+    }
+    
+    // Clear any existing event listeners by cloning and replacing the button
+    const newDalejBtn = dalejBtn.cloneNode(true);
+    dalejBtn.parentNode.replaceChild(newDalejBtn, dalejBtn);
+    
+    // Clone and replace character cards to remove old event listeners
+    const newCharacterCards = [];
+    characterCards.forEach(card => {
+        const newCard = card.cloneNode(true);
+        card.parentNode.replaceChild(newCard, card);
+        newCharacterCards.push(newCard);
+    });
+
+    // Set up "Náhodný výber" button
+    const nahodnyBtn = document.getElementById('character-nahodny-btn');
+    if (nahodnyBtn) {
+        const newNahodnyBtn = nahodnyBtn.cloneNode(true);
+        nahodnyBtn.parentNode.replaceChild(newNahodnyBtn, nahodnyBtn);
+        
+        newNahodnyBtn.onclick = () => {
+            if (selectionInProgress && !enemySelectionInProgress) {
+                // Player team selection - fill missing allies
+                const mode = gameState.currentMode || '1v1';
+                const allyCount = GAME_MODES[mode]?.allyCount || 0;
+                
+                // Get all available characters (excluding already selected)
+                const charKeys = Object.keys(CHARACTERS);
+                const alreadySelected = selectedCommanderKey ? [selectedCommanderKey, ...selectedAllies] : [...selectedAllies];
+                const availableChars = charKeys.filter(k => !alreadySelected.includes(k));
+                
+                // If no commander selected, pick one randomly
+                if (!selectedCommanderKey && availableChars.length > 0) {
+                    commanderSelected = true;
+                    selectedCommanderKey = availableChars[Math.floor(Math.random() * availableChars.length)];
+                    selectedAllies = [];
+                    
+                    // Update visuals
+                    newCharacterCards.forEach(card => {
+                        card.classList.remove('commander-selected', 'locked', 'dimmed', 'ally-selected', 'random-selected');
+                        card.style.filter = '';
+                        card.style.pointerEvents = '';
+                        
+                        if (card.dataset.char === selectedCommanderKey) {
+                            card.classList.add('commander-selected', 'locked', 'random-selected');
+                            card.style.filter = 'grayscale(0.8) brightness(0.7)';
+                            card.style.pointerEvents = 'none';
+                        }
+                    });
+                    
+                    const heading = document.querySelector('#character-selection h2');
+                    if (heading) heading.textContent = 'Vyber si svojich spolubojovníkov';
+                }
+                
+                // Fill missing allies randomly
+                const availableForAllies = charKeys.filter(k => k !== selectedCommanderKey && !selectedAllies.includes(k));
+                const neededAllies = allyCount - selectedAllies.length;
+                
+                for (let i = 0; i < neededAllies && availableForAllies.length > 0; i++) {
+                    const randomIndex = Math.floor(Math.random() * availableForAllies.length);
+                    const randomAlly = availableForAllies.splice(randomIndex, 1)[0];
+                    selectedAllies.push(randomAlly);
+                }
+                
+                // Update all visuals
+                newCharacterCards.forEach(card => {
+                    const k = card.dataset.char;
+                    card.classList.remove('ally-selected', 'dimmed', 'random-selected');
+                    
+                    if (selectedAllies.includes(k)) {
+                        card.classList.add('ally-selected', 'dimmed', 'random-selected');
+                        card.style.filter = 'grayscale(0.7) brightness(0.7)';
+                    } else if (k !== selectedCommanderKey) {
+                        card.style.filter = '';
+                        card.style.pointerEvents = '';
+                    }
+                });
+                
+                updateAllyCounter(selectedAllies.length, allyCount);
+                newDalejBtn.disabled = (selectedAllies.length !== allyCount);
+            }
+        };
+    }
+    
+    // Set up fresh event listeners
+    newCharacterCards.forEach(card => {
+        const charKey = card.dataset.char;
+        const char = CHARACTERS[charKey];
+        
+        // Add hover effects for flags
+        if (char && char.flag) {
+            card.addEventListener('mouseenter', () => {
+                card.style.backgroundImage = `url('${char.flag}')`;
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.backgroundImage = '';
+            });
+        }
+        
+        // Add click handler for character selection
+        card.addEventListener('click', () => {
+            if (!selectionInProgress) return;
+            
+            // 1. Commander selection phase
+            if (!commanderSelected) {
+                commanderSelected = true;
+                selectedCommanderKey = charKey;
+                
+                // Clear all cards
+                newCharacterCards.forEach(c => {
+                    c.classList.remove('commander-selected', 'locked', 'dimmed', 'ally-selected', 'selected-commander', 'selected-ally', 'selected-enemy-commander', 'selected-enemy-ally', 'random-selected');
+                    c.style.filter = '';
+                    c.style.pointerEvents = '';
+                });
+                
+                // Mark selected commander
+                card.classList.add('commander-selected');
+                card.classList.add('locked');
+                card.style.filter = 'grayscale(0.8) brightness(0.7)';
+                card.style.pointerEvents = 'none';
+                
+                selectedAllies = [];
+                updateAllyCounter(0, maxAllies);
+                
+                const heading = document.querySelector('#character-selection h2');
+                if (heading) heading.textContent = 'Vyber si svojich spolubojovníkov';
+                
+                if (maxAllies === 0) {
+                    newDalejBtn.disabled = false;
+                } else {
+                    newDalejBtn.disabled = true;
+                }
+            }
+            // 2. Allies selection phase
+            else if (commanderSelected && charKey !== selectedCommanderKey) {
+                // Toggle selection
+                if (!selectedAllies.includes(charKey) && selectedAllies.length < maxAllies) {
+                    selectedAllies.push(charKey);
+                } else if (selectedAllies.includes(charKey)) {
+                    selectedAllies = selectedAllies.filter(k => k !== charKey);
+                }
+                
+                // Update all card visuals for allies
+                newCharacterCards.forEach(c => {
+                    const k = c.dataset.char;
+                    if (selectedAllies.includes(k)) {
+                        c.classList.add('ally-selected', 'dimmed');
+                        c.style.filter = 'grayscale(0.7) brightness(0.7)';
+                    } else {
+                        c.classList.remove('ally-selected', 'dimmed');
+                        c.style.filter = '';
+                    }
+                    // Commander card stays locked
+                    if (k === selectedCommanderKey) {
+                        c.classList.add('commander-selected', 'locked');
+                        c.style.filter = 'grayscale(0.8) brightness(0.7)';
+                        c.style.pointerEvents = 'none';
+                    } else {
+                        c.classList.remove('commander-selected', 'locked');
+                        c.style.pointerEvents = '';
+                    }
+                });
+                
+                updateAllyCounter(selectedAllies.length, maxAllies);
+                newDalejBtn.disabled = (selectedAllies.length !== maxAllies);
+            }
+        });
+    });
+    
+    // Set up "Ďalej" button click handler
+    newDalejBtn.onclick = () => {
+        if (!commanderSelected) return;
+        if (selectedAllies.length !== maxAllies) return;
+        
+        // Save player selection
+        gameState.selectedPlayerChar = CHARACTERS[selectedCommanderKey];
+        gameState.selectedAllies = selectedAllies.slice();
+
+        // Start enemy selection phase
+        selectionInProgress = false;
+        enemyCommanderSelected = false;
+        enemySelectedCommanderKey = null;
+        enemySelectedAllies = [];
+        enemyMaxAllies = maxAllies;
+        enemySelectionInProgress = true;
+
+        // Filter out already picked characters
+        const exclude = [selectedCommanderKey, ...selectedAllies];
+        const availableEnemyChars = Object.keys(CHARACTERS).filter(key => !exclude.includes(key));
+
+        // Show only available characters for enemy selection
+        newCharacterCards.forEach(card => {
+            const k = card.dataset.char;
+            if (availableEnemyChars.includes(k)) {
+                card.style.display = '';
+                card.classList.remove('commander-selected', 'ally-selected', 'locked', 'dimmed', 'selected-commander', 'selected-ally', 'selected-enemy-commander', 'selected-enemy-ally', 'random-selected');
+                card.style.filter = '';
+                card.style.pointerEvents = '';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+
+        // Update heading and counter for enemy selection
+        const heading = document.querySelector('#character-selection h2');
+        if (heading) heading.textContent = 'Vyber nepriateľského veliteľa';
+        updateAllyCounter(0, enemyMaxAllies);
+        newDalejBtn.disabled = true;
+
+        // Set up enemy selection event listeners
+        const enemyCards = [];
+        newCharacterCards.forEach(card => {
+            const charKey = card.dataset.char;
+            const char = CHARACTERS[charKey];
+            
+            // Clone and replace to remove old listeners
+            const newCard = card.cloneNode(true);
+            if (card.parentNode) {
+                card.parentNode.replaceChild(newCard, card);
+                enemyCards.push(newCard);
+            }
+            
+            // Add hover effects
+            if (char && char.flag) {
+                newCard.addEventListener('mouseenter', () => {
+                    newCard.style.backgroundImage = `url('${char.flag}')`;
+                });
+                newCard.addEventListener('mouseleave', () => {
+                    newCard.style.backgroundImage = '';
+                });
+            }
+            
+            // Add enemy selection click handler
+            newCard.addEventListener('click', () => {
+                if (!enemySelectionInProgress) return;
+                
+                // Enemy commander selection
+                if (!enemyCommanderSelected) {
+                    enemyCommanderSelected = true;
+                    enemySelectedCommanderKey = charKey;
+                    
+                    // Update all enemy cards
+                    enemyCards.forEach(c => {
+                        c.classList.remove('commander-selected', 'locked', 'dimmed', 'ally-selected', 'selected-commander', 'selected-ally', 'selected-enemy-commander', 'selected-enemy-ally', 'random-selected');
+                        c.style.filter = '';
+                        c.style.pointerEvents = '';
+                    });
+                    
+                    newCard.classList.add('selected-enemy-commander');
+                    newCard.style.filter = 'grayscale(0.8) brightness(0.7)';
+                    newCard.style.pointerEvents = 'none';
+                    
+                    enemySelectedAllies = [];
+                    updateAllyCounter(0, enemyMaxAllies);
+                    
+                    if (heading) heading.textContent = 'Vyber nepriateľských spolubojovníkov';
+                    if (enemyMaxAllies === 0) {
+                        // Update the actual button reference
+                        const currentDalejBtn = document.getElementById('character-dalej-btn');
+                        if (currentDalejBtn) currentDalejBtn.disabled = false;
+                    } else {
+                        const currentDalejBtn = document.getElementById('character-dalej-btn');
+                        if (currentDalejBtn) currentDalejBtn.disabled = true;
+                    }
+                }
+                // Enemy allies selection
+                else if (enemyCommanderSelected && charKey !== enemySelectedCommanderKey) {
+                    if (!enemySelectedAllies.includes(charKey) && enemySelectedAllies.length < enemyMaxAllies) {
+                        enemySelectedAllies.push(charKey);
+                    } else if (enemySelectedAllies.includes(charKey)) {
+                        enemySelectedAllies = enemySelectedAllies.filter(k => k !== charKey);
+                    }
+                    
+                    // Update visuals
+                    enemyCards.forEach(c => {
+                        const k = c.dataset.char;
+                        if (enemySelectedAllies.includes(k)) {
+                            c.classList.add('selected-enemy-ally');
+                            c.style.filter = 'grayscale(0.7) brightness(0.7)';
+                        } else {
+                            c.classList.remove('selected-enemy-ally');
+                            c.style.filter = '';
+                        }
+                        if (k === enemySelectedCommanderKey) {
+                            c.classList.add('selected-enemy-commander');
+                            c.style.filter = 'grayscale(0.8) brightness(0.7)';
+                            c.style.pointerEvents = 'none';
+                        } else {
+                            c.classList.remove('selected-enemy-commander');
+                            c.style.pointerEvents = '';
+                        }
+                    });
+                    
+                    updateAllyCounter(enemySelectedAllies.length, enemyMaxAllies);
+                    // Update the actual button reference
+                    const currentDalejBtn = document.getElementById('character-dalej-btn');
+                    if (currentDalejBtn) currentDalejBtn.disabled = (enemySelectedAllies.length !== enemyMaxAllies);
+                }
+            });
+        });
+
+        // Reinitialize "Náhodný výber" button for enemy phase
+        const currentNahodnyBtn = document.getElementById('character-nahodny-btn');
+        if (currentNahodnyBtn) {
+            const newEnemyNahodnyBtn = currentNahodnyBtn.cloneNode(true);
+            currentNahodnyBtn.parentNode.replaceChild(newEnemyNahodnyBtn, currentNahodnyBtn);
+            
+            newEnemyNahodnyBtn.onclick = () => {
+                if (enemySelectionInProgress) {
+                    // Enemy selection random fill
+                    const mode = gameState.currentMode || '1v1';
+                    const enemyAllyCount = GAME_MODES[mode]?.allyCount || 0;
+                    
+                    // Get available enemy characters (excluding player selections)
+                    const charKeys = Object.keys(CHARACTERS);
+                    const playerSelections = [selectedCommanderKey, ...selectedAllies];
+                    const alreadySelectedEnemies = enemySelectedCommanderKey ? [enemySelectedCommanderKey, ...enemySelectedAllies] : [...enemySelectedAllies];
+                    const availableEnemyChars = charKeys.filter(k => !playerSelections.includes(k) && !alreadySelectedEnemies.includes(k));
+                    
+                    // If no enemy commander selected, pick one randomly
+                    if (!enemySelectedCommanderKey && availableEnemyChars.length > 0) {
+                        enemyCommanderSelected = true;
+                        enemySelectedCommanderKey = availableEnemyChars[Math.floor(Math.random() * availableEnemyChars.length)];
+                        enemySelectedAllies = [];
+                        
+                        const heading = document.querySelector('#character-selection h2');
+                        if (heading) heading.textContent = 'Vyber nepriateľských spolubojovníkov';
+                    }
+                    
+                    // Fill missing enemy allies randomly
+                    const availableForEnemyAllies = charKeys.filter(k => !playerSelections.includes(k) && k !== enemySelectedCommanderKey && !enemySelectedAllies.includes(k));
+                    const neededEnemyAllies = enemyAllyCount - enemySelectedAllies.length;
+                    
+                    for (let i = 0; i < neededEnemyAllies && availableForEnemyAllies.length > 0; i++) {
+                        const randomIndex = Math.floor(Math.random() * availableForEnemyAllies.length);
+                        const randomEnemyAlly = availableForEnemyAllies.splice(randomIndex, 1)[0];
+                        enemySelectedAllies.push(randomEnemyAlly);
+                    }
+                    
+                    // Update all enemy visuals
+                    enemyCards.forEach(card => {
+                        const k = card.dataset.char;
+                        card.classList.remove('selected-enemy-commander', 'selected-enemy-ally', 'random-selected');
+                        card.style.filter = '';
+                        card.style.pointerEvents = '';
+                        
+                        if (k === enemySelectedCommanderKey) {
+                            card.classList.add('selected-enemy-commander', 'random-selected');
+                            card.style.filter = 'grayscale(0.8) brightness(0.7)';
+                            card.style.pointerEvents = 'none';
+                        } else if (enemySelectedAllies.includes(k)) {
+                            card.classList.add('selected-enemy-ally', 'random-selected');
+                            card.style.filter = 'grayscale(0.7) brightness(0.7)';
+                        }
+                    });
+                    
+                    updateAllyCounter(enemySelectedAllies.length, enemyAllyCount);
+                    const finalDalejBtn = document.getElementById('character-dalej-btn');
+                    if (finalDalejBtn) finalDalejBtn.disabled = (enemySelectedAllies.length !== enemyAllyCount);
+                }
+            };
+        }
+
+        // Update "Ďalej" button for enemy confirmation - IMPORTANT: Do this at the end
+        const currentFinalDalejBtn = document.getElementById('character-dalej-btn');
+        const newFinalDalejBtn = currentFinalDalejBtn.cloneNode(true);
+        currentFinalDalejBtn.parentNode.replaceChild(newFinalDalejBtn, currentFinalDalejBtn);
+        
+        newFinalDalejBtn.onclick = () => {
+            if (!enemyCommanderSelected) return;
+            if (enemySelectedAllies.length !== enemyMaxAllies) return;
+            
+            // Save enemy selection
+            gameState.selectedEnemyChar = CHARACTERS[enemySelectedCommanderKey];
+            gameState.selectedEnemyAllies = enemySelectedAllies.slice();
+            
+            if (gameState.currentMode === '1v1') {
+                gameState.selectedEnemies = [enemySelectedCommanderKey];
+            } else {
+                gameState.selectedEnemies = [enemySelectedCommanderKey, ...enemySelectedAllies];
+            }
+            
+            // Restore all cards for next screens
+            const allCards = document.querySelectorAll('.character-card');
+            allCards.forEach(card => {
+                card.style.display = '';
+            });
+            
+            // Go to map selection
+            showScreen('mapSelection');
+        };
+    };
+    
+    console.log('Character selection reinitialized');
 }
 
 // Initialize multiplayer mode selection when page loads
