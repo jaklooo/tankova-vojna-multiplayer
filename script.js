@@ -1727,6 +1727,7 @@ const screens = {
     tutorial: document.getElementById('tutorial-screen'),
     modeSelection: document.getElementById('mode-selection'),
     characterSelection: document.getElementById('character-selection'),
+    mapSelection: document.getElementById('map-selection'),
     tankSelection: document.getElementById('tank-selection'),
     multiplayerNameEntry: document.getElementById('multiplayer-name-entry'),
     multiplayerModeSelection: document.getElementById('multiplayer-mode-selection'),
@@ -3023,8 +3024,13 @@ function showScreen(screenName) {
     }
 
     // Show the requested screen
-    screens[screenName].classList.add('active');
-    gameState.currentScreen = screenName;
+    if (screens[screenName]) {
+        screens[screenName].classList.add('active');
+        gameState.currentScreen = screenName;
+    } else {
+        console.warn('Screen not found:', screenName);
+        return;
+    }
     
     // Always scroll to top when changing screens
     setTimeout(() => {
@@ -3767,18 +3773,28 @@ function init() {
 
     }
 
-    // Map selection logic
+    // Map selection logic for offline mode
     if (mapCards && mapCards.length > 0) {
         mapCards.forEach(card => {
             card.addEventListener('click', () => {
                 mapCards.forEach(c => c.classList.remove('selected'));
                 card.classList.add('selected');
                 gameState.selectedMap = card.dataset.map;
-                setTimeout(() => showScreen('tankSelection'), 200);
             });
         });
     }
 
+    // Map selection "Ďalej" button
+    const mapDalejBtn = document.getElementById('map-dalej-btn');
+    if (mapDalejBtn) {
+        mapDalejBtn.addEventListener('click', () => {
+            if (gameState.selectedMap) {
+                showScreen('tankSelection');
+            } else {
+                alert('Vyber si mapu!');
+            }
+        });
+    }
 
     // Event Listeners for tank selection
     if (tankCards && tankCards.length > 0) {

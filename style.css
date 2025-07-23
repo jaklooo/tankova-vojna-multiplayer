@@ -2566,3 +2566,59 @@ body::-webkit-scrollbar-thumb:hover {
     }
 }
 
+/* Map Selection Styles */
+.map-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-top: 20px;
+    justify-items: center;
+    align-items: stretch;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.map-card {
+    background-color: rgba(0, 0, 0, 0.6);
+    border: 2px solid #e67e22;
+    border-radius: 10px;
+    padding: 15px;
+    width: 200px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+}
+
+.map-card:hover {
+    transform: scale(1.05);
+    border-color: #f39c12;
+}
+
+.map-card.selected {
+    border-color: #f1c40f;
+    background-color: rgba(241, 196, 15, 0.2);
+    transform: scale(1.08);
+}
+
+.map-card img {
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.map-card h3 {
+    color: #fff;
+    margin: 8px 0 4px 0;
+    font-size: 1.1em;
+}
+
+.map-card p {
+    color: #ccc;
+    margin: 0;
+    font-size: 0.9em;
+}
+
