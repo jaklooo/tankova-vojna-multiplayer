@@ -12,7 +12,7 @@
     <div id="loading-screen" class="loading-screen active">
         <div class="loading-container">
             <div class="loading-logo">
-                <h1>🚗 Tanková Vojna 🚗</h1>
+                <h1>PK TANKY</h1>
             </div>
             <div class="loading-progress">
                 <div class="loading-bar">
@@ -59,11 +59,10 @@
         <div id="main-menu" class="screen active" style="position:relative;">
             <!-- PK.png in bottom right corner, double size (128px width) -->
             <img src="PK.png" alt="PK logo" style="position:absolute; right:18px; bottom:18px; width:128px; height:auto; z-index:5; opacity:0.92; pointer-events:none;">
-            <h1>Tanková Vojna</h1>
-            <button id="start-btn">Štart Hry (Offline)</button>
+            <h1>PK TANKY</h1>
+            <button id="start-btn">Štart Hry</button>
             <button id="multiplayer-btn">Online Multiplayer</button>
-            <button id="tutorial-btn">Návod</button>
-            <button id="end-btn">Koniec</button>
+            <button id="tutorial-btn">Tutoriál</button>
         </div>
 
         <div id="tutorial-screen" class="screen">
@@ -96,46 +95,16 @@
             <p>Vyber si typ multiplayer hry:</p>
             
             <div class="game-modes-grid">
-                <div class="game-mode-card" data-mode="1v1">
-                    <h3>1 vs 1</h3>
-                    <p>Klasický súboj jeden na jeden</p>
-                    <span class="mode-info">2 hráči</span>
-                </div>
-                
-                <div class="game-mode-card" data-mode="2v2">
-                    <h3>2 vs 2</h3>
-                    <p>Tímový súboj dva proti dvom</p>
-                    <span class="mode-info">4 hráči (tímy)</span>
-                </div>
-                
-                <div class="game-mode-card" data-mode="3v3">
-                    <h3>3 vs 3</h3>
-                    <p>Tímový súboj tri proti trom</p>
-                    <span class="mode-info">6 hráčov (tímy)</span>
-                </div>
-                
-                <div class="game-mode-card" data-mode="free-for-all-3">
-                    <h3>Voľný súboj</h3>
-                    <p>Každý proti každému</p>
-                    <span class="mode-info">3 hráči</span>
-                </div>
-                
-                <div class="game-mode-card" data-mode="free-for-all-4">
-                    <h3>Voľný súboj</h3>
-                    <p>Každý proti každému</p>
-                    <span class="mode-info">4 hráči</span>
-                </div>
-                
-                <div class="game-mode-card" data-mode="free-for-all-6">
-                    <h3>Voľný súboj</h3>
-                    <p>Každý proti každému</p>
-                    <span class="mode-info">6 hráčov</span>
-                </div>
-                
-                <div class="game-mode-card" data-mode="unlimited">
-                    <h3>Neobmedzený</h3>
-                    <p>Voľný súboj s flexibilným počtom hráčov</p>
+                <div class="game-mode-card" data-mode="all-vs-all">
+                    <h3>All vs. All</h3>
+                    <p>Každý proti každému - bez tímov</p>
                     <span class="mode-info">2-16 hráčov</span>
+                </div>
+                
+                <div class="game-mode-card" data-mode="team-vs-team">
+                    <h3>Team vs. Team</h3>
+                    <p>Tímový súboj - vytvor si svoj tím</p>
+                    <span class="mode-info">2-16 hráčov (tímy)</span>
                 </div>
             </div>
             
@@ -151,11 +120,68 @@
             <div id="lobby-players" style="display:none;">
                 <h3>Hráči v miestnosti:</h3>
                 <div id="players-list"></div>
+                <div id="host-controls" style="display:none; margin-top: 10px;">
+                    <button id="host-lock-room-btn-main" class="host-control-btn">Uzamknúť miestnosť</button>
+                </div>
+            </div>
+
+            <!-- Team Selection for Team vs Team Mode -->
+            <div id="lobby-team-selection" style="display:none;">
+                <h3>Výber tímu</h3>
+                
+                <div class="teams-container">
+                    <div class="team-section blue-team">
+                        <div class="team-header">
+                            <h4>Modrý tím</h4>
+                            <input type="text" id="blue-team-name" placeholder="Názov tímu..." maxlength="20" class="team-name-input">
+                            <span class="team-count" id="blue-team-count">0 hráčov</span>
+                        </div>
+                        <div class="team-players" id="blue-team-players"></div>
+                        <button class="join-team-btn" data-team="blue">Pridať sa k modranému tímu</button>
+                    </div>
+
+                    <div class="team-section red-team">
+                        <div class="team-header">
+                            <h4>Červený tím</h4>
+                            <input type="text" id="red-team-name" placeholder="Názov tímu..." maxlength="20" class="team-name-input">
+                            <span class="team-count" id="red-team-count">0 hráčov</span>
+                        </div>
+                        <div class="team-players" id="red-team-players"></div>
+                        <button class="join-team-btn" data-team="red">Pridať sa k červenému tímu</button>
+                    </div>
+                </div>
+
+                <div class="team-ready-section">
+                    <div class="player-ready-status">
+                        <span id="ready-players-count">0</span> / <span id="total-players-count">0</span> hráčov pripravených
+                    </div>
+                    <button id="team-ready-btn" disabled>Som pripravený!</button>
+                </div>
             </div>
             
             <!-- Character Selection in Lobby -->
             <div id="lobby-character-selection" style="display:none;">
                 <h3>Výber charakteru:</h3>
+                
+                <!-- Team status display for team vs team mode -->
+                <div id="team-selection-status" class="teams-container" style="margin-bottom: 20px;">
+                    <div class="team-section blue-team">
+                        <div class="team-header">
+                            <h4 id="blue-team-character-title">Modrý tím</h4>
+                            <span class="team-count" id="blue-team-character-count">0 hráčov</span>
+                        </div>
+                        <div class="team-players" id="blue-team-character-players"></div>
+                    </div>
+
+                    <div class="team-section red-team">
+                        <div class="team-header">
+                            <h4 id="red-team-character-title">Červený tím</h4>
+                            <span class="team-count" id="red-team-character-count">0 hráčov</span>
+                        </div>
+                        <div class="team-players" id="red-team-character-players"></div>
+                    </div>
+                </div>
+                
                 <div id="lobby-character-cards" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:15px; max-width:600px; margin:20px auto; padding:10px;">
                     <div class="lobby-character-card" data-character="jaccelini">
                         <img src="ja.png" alt="M. Jaklović" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
@@ -182,9 +208,9 @@
                         <h5 style="margin:0; font-size:0.85em;">A. Matthews</h5>
                         <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Brit. kráľovstvo</p>
                     </div>
-                    <div class="lobby-character-card" data-character="kushi">
-                        <img src="hrebenar.jpg" alt="P. Kushi" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
-                        <h5 style="margin:0; font-size:0.85em;">P. Kushi</h5>
+                    <div class="lobby-character-card" data-character="Hrebekushi">
+                        <img src="hrebenar.jpg" alt="P. Hrebekushi" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px;">
+                        <h5 style="margin:0; font-size:0.85em;">P. Hrebekushi</h5>
                         <p style="font-size:0.7em; color:#bbb; margin:2px 0;">Japonsko</p>
                     </div>
                     <div class="lobby-character-card" data-character="volenec">
@@ -371,6 +397,26 @@
             <!-- Tank Selection in Lobby -->
             <div id="lobby-tank-selection" style="display:none;">
                 <h3>Výber tanku:</h3>
+                
+                <!-- Team status display for team vs team mode -->
+                <div id="team-tank-status" class="teams-container" style="margin-bottom: 20px;">
+                    <div class="team-section blue-team">
+                        <div class="team-header">
+                            <h4 id="blue-team-tank-title">Modrý tím</h4>
+                            <span class="team-count" id="blue-team-tank-count">0 hráčov</span>
+                        </div>
+                        <div class="team-players" id="blue-team-tank-players"></div>
+                    </div>
+
+                    <div class="team-section red-team">
+                        <div class="team-header">
+                            <h4 id="red-team-tank-title">Červený tím</h4>
+                            <span class="team-count" id="red-team-tank-count">0 hráčov</span>
+                        </div>
+                        <div class="team-players" id="red-team-tank-players"></div>
+                    </div>
+                </div>
+                
                 <div id="lobby-tank-cards">
                     <div class="lobby-tank-card" data-tank="purple">
                         <h4>Obrnený Bojovník</h4>
@@ -395,7 +441,27 @@
 
             <!-- Map Selection in Lobby -->
             <div id="lobby-map-selection" style="display:none;">
-                <h3>Výber mapy:</h3>
+                <h3>Hlasovanie za mapu:</h3>
+                
+                <!-- Team status display for team vs team mode -->
+                <div id="team-map-status" class="teams-container" style="margin-bottom: 20px;">
+                    <div class="team-section blue-team">
+                        <div class="team-header">
+                            <h4 id="blue-team-map-title">Modrý tím</h4>
+                            <span class="team-count" id="blue-team-map-count">0 hráčov</span>
+                        </div>
+                        <div class="team-players" id="blue-team-map-players"></div>
+                    </div>
+
+                    <div class="team-section red-team">
+                        <div class="team-header">
+                            <h4 id="red-team-map-title">Červený tím</h4>
+                            <span class="team-count" id="red-team-map-count">0 hráčov</span>
+                        </div>
+                        <div class="team-players" id="red-team-map-players"></div>
+                    </div>
+                </div>
+                
                 <div id="lobby-map-cards">
                     <div class="lobby-map-card" data-map="1">
                         <img src="grass_texture.png" alt="Mapa 1" style="width:100px; height:70px; object-fit:cover; border-radius:8px; margin-bottom:8px;">
@@ -413,13 +479,12 @@
                         <p>Iglá na ľade</p>
                     </div>
                 </div>
-                <div id="selected-map-info" style="text-align:center; margin:10px 0; color:#f1c40f;">
-                    <strong>Vybraná mapa: <span id="selected-map-name">Náhodná</span></strong>
-                </div>
             </div>
             
             <div id="lobby-ready-section" style="display:none;">
                 <button id="ready-btn" style="display:none;">Som pripravený!</button>
+                <button id="all-vs-all-ready-btn" style="display:none;">Som pripravený!</button>
+                <button id="game-ready-btn" style="display:none; background-color: #27ae60; font-size: 18px; padding: 12px 30px; margin-top: 10px;">Ready na hru!</button>
             </div>
             <div id="lobby-waiting" style="display:none;">
                 <p>Čakám na ďalších hráčov...</p>
@@ -431,29 +496,6 @@
                 <button id="host-start-selection-btn" style="display:none;">Spustiť výber</button>
                 <button id="host-start-game-btn" style="display:none;">Spustiť hru</button>
             </div>
-        </div>
-
-        <!-- Výber mapy po výbere charakteru -->
-        <div id="map-selection" class="screen">
-            <h2>Vyber Mapu</h2>
-            <div class="map-cards">
-                <div class="map-card" data-map="1">
-                    <img src="grass_texture.png" alt="Mapa 1" style="width:120px; height:80px; object-fit:cover; border-radius:10px; border:2px solid #27ae60; margin-bottom:10px;">
-                    <h3>Mapa 1: Zelená krajina</h3>
-                    <p>Klasické prostredie</p>
-                </div>
-                <div class="map-card" data-map="2">
-                    <img src="dessert.jpg" alt="Mapa 2" style="width:120px; height:80px; object-fit:cover; border-radius:10px; border:2px solid #e67e22; margin-bottom:10px;">
-                    <h3>Mapa 2: Púšť s ropnými vežami</h3>
-                    <p>Púštna podlaha, objekty: oilrig</p>
-                </div>
-                <div class="map-card" data-map="3">
-                    <img src="ice.png" alt="Mapa 3" style="width:120px; height:80px; object-fit:cover; border-radius:10px; border:2px solid #3498db; margin-bottom:10px;">
-                    <h3>Mapa 3: Ľadová Arktída</h3>
-                    <p>Ľadová podlaha, objekty: iglu</p>
-                </div>
-            </div>
-            <button class="back-to-menu">Späť do Menu</button>
         </div>
 
         <div id="mode-selection" class="screen">
@@ -493,9 +535,9 @@
                     <h3>A. Matthews</h3>
                     <p>Národ: Spojené Kráľovstvo</p>
                 </div>
-                <div class="character-card" data-char="kushi">
-                    <img src="hrebenar.jpg" alt="P. Kushi">
-                    <h3>P. Kushi</h3>
+                <div class="character-card" data-char="Hrebekushi">
+                    <img src="hrebenar.jpg" alt="P. Hrebekushi">
+                    <h3>P. Hrebekushi</h3>
                     <p>Národ: Japonsko</p>
                 </div>
                 <div class="character-card" data-char="volenec">
@@ -696,7 +738,7 @@
                     </div>
                 </div>
                 <div class="tank-card" data-tank="orange">
-                    <h3>Rýchly Útočník</h3>
+                  <h3>Rýchly Útočník</h3>
                     <canvas class="tank-preview-canvas" data-tank-type="orange" width="100" height="80"></canvas>
                     <p>Rýchly, málo HP, rýchla streľba</p>
                     <div class="stats">

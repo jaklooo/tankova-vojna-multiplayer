@@ -10,6 +10,17 @@ let selectedLobbyCharacter = null; // Selected character in lobby
 let selectedLobbyTank = null; // Selected tank in lobby
 let playerName = ''; // Player's chosen name
 
+// --- TEAM MANAGEMENT VARIABLES ---
+let selectedGameMode = 'all-vs-all';
+let playerTeam = null;
+let teamReadyPlayers = new Set();
+let gameReadyPlayers = new Set(); // Players ready for final game start in combined selection
+let allPlayers = [];
+let teamCaptains = { blue: null, red: null };
+let teamNames = { blue: 'Modrý tím', red: 'Červený tím' };
+let playerIsReady = false;
+let currentPhase = 'team-selection'; // track current phase
+
 // --- MULTIPLAYER OPTIMIZATIONS ---
 let lastNetworkSync = 0;
 const NETWORK_SYNC_INTERVAL = 70; // Optimized to 70ms (~14 FPS) for very smooth movement
@@ -22,12 +33,13 @@ const VIEWPORT_CULLING_MARGIN = 300; // Extra margin for viewport culling (incre
 let lastFrameTime = 0;
 
 // Initialize multiplayer connection
-function initMultiplayer(gameMode = '1v1') {
+function initMultiplayer(gameMode = 'all-vs-all') {
     if (socket && socket.connected) {
         socket.disconnect();
     }
     
     socket = io();
+    selectedGameMode = gameMode;
     
     socket.on('connect', () => {
         console.log('Pripojený k serveru');
@@ -45,9 +57,545 @@ function initMultiplayer(gameMode = '1v1') {
         isMultiplayer = false;
     });
     
+    socket.on('map-votes-updated', (data) => {
+        console.log('Map votes updated received:', data); // Debug log
+        // Update map voting display
+        const mapCards = document.querySelectorAll('#lobby-map-cards .lobby-map-card');
+        mapCards.forEach(card => {
+            const mapId = card.dataset.map;
+            const voteCount = data.mapVotes[mapId] ? data.mapVotes[mapId].length : 0;
+            
+            let voteCounter = card.querySelector('.vote-counter');
+            if (!voteCounter) {
+                voteCounter = document.createElement('div');
+                voteCounter.className = 'vote-counter';
+                card.appendChild(voteCounter);
+            }
+            
+            voteCounter.textContent = `${voteCount} ${voteCount === 1 ? 'hlas' : 'hlasov'}`;
+        });
+    });
+
+    socket.on('player-ready-updated', (data) => {
+        // Update ready status display
+        if (selectedGameMode === 'all-vs-all') {
+            const playersList = document.getElementById('players-list');
+            if (playersList) {
+                updatePlayersList();
+            }
+        } else if (selectedGameMode === 'team-vs-team' && currentPhase === 'combined-selection') {
+            // Update team ready state for combined selection
+            if (data.ready) {
+                teamReadyPlayers.add(data.playerId);
+            } else {
+                teamReadyPlayers.delete(data.playerId);
+            }
+            
+            // Update team ready button text
+            const teamReadyBtn = document.getElementById('team-ready-btn');
+            if (teamReadyBtn) {
+                const isCurrentPlayerReady = teamReadyPlayers.has(socket.id);
+                teamReadyBtn.textContent = isCurrentPlayerReady ? 'Zrušiť ready' : 'Som pripravený!';
+            }
+            
+            // Update team displays with ready status
+            updateCharacterTeamDisplay();
+            updateTankTeamDisplay();
+            updateMapTeamDisplay();
+            
+            console.log(`Ready players: ${data.readyCount}/${data.totalPlayers}`);
+        }
+    });
+    
+    socket.on('room-locked', (data) => {
+        // Update lock button text
+        const hostLockBtn = document.getElementById('host-lock-room-btn-main');
+        if (hostLockBtn) {
+            hostLockBtn.textContent = data.locked ? 'Odomknúť miestnosť' : 'Uzamknúť miestnosť';
+        }
+        
+        // Show notification
+        if (data.locked) {
+            console.log('Miestnosť je teraz uzamknutá');
+        } else {
+            console.log('Miestnosť je teraz odomknutá');
+        }
+    });
+    
     socket.on('player-joined', (data) => {
         console.log('Hráč sa pripojil:', data);
-        otherPlayers = data.players.filter(p => p.id !== socket.id);
+        allPlayers = data.players || [];
+        otherPlayers = allPlayers.filter(p => p.id !== socket.id);
+        
+        // Set current room and host status
+        currentRoom = data.roomId;
+        isHost = data.hostId === socket.id;
+        selectedGameMode = data.gameMode;
+        
+        // Show appropriate lobby sections based on game mode
+        updateLobbyDisplay();
+        updatePlayersList();
+        
+        if (selectedGameMode === 'team-vs-team') {
+            updateTeamUI();
+        }
+    });
+
+    socket.on('player-left', (data) => {
+        console.log('Hráč odišiel:', data);
+        allPlayers = data.players || [];
+        otherPlayers = allPlayers.filter(p => p.id !== socket.id);
+        
+        updatePlayersList();
+        
+        if (selectedGameMode === 'team-vs-team') {
+            updateTeamUI();
+        }
+    });
+
+    socket.on('team-updated', (data) => {
+        // Update player team assignments
+        allPlayers = data.players || [];
+        otherPlayers = allPlayers.filter(p => p.id !== socket.id);
+        
+        // Update team captains and names
+        teamCaptains = data.teamCaptains || {};
+        teamNames = data.teamNames || {};
+        
+        // Find current player and update team
+        const currentPlayer = allPlayers.find(p => p.id === socket.id);
+        if (currentPlayer) {
+            playerTeam = currentPlayer.team;
+        }
+        
+        // Update team name inputs with current names
+        const blueTeamNameInput = document.getElementById('blue-team-name');
+        const redTeamNameInput = document.getElementById('red-team-name');
+        if (blueTeamNameInput && teamNames.blue) {
+            blueTeamNameInput.value = teamNames.blue;
+        }
+        if (redTeamNameInput && teamNames.red) {
+            redTeamNameInput.value = teamNames.red;
+        }
+        
+        updateTeamUI();
+        updateJoinButtonsState();
+        updateTeamInputStates();
+    });
+
+    socket.on('ready-updated', (data) => {
+        teamReadyPlayers = new Set(data.readyPlayers || []);
+        updateTeamUI();
+        
+        // Check if all players are ready
+        if (data.allReady && allPlayers.length >= 2) {
+            // Start character selection
+            setTimeout(() => {
+                showLobbySection('character');
+            }, 1000);
+        }
+    });
+
+    socket.on('game-ready-updated', (data) => {
+        gameReadyPlayers = new Set(data.gameReadyPlayers || []);
+        updateGameReadyUI();
+        
+        console.log(`Game ready players: ${data.gameReadyCount}/${data.totalPlayers}`);
+        
+        // If all players are game ready, start the game!
+        if (data.allGameReady && data.totalPlayers >= 2) {
+            console.log('Všetci hráči sú pripravení na hru! Spúšťam hru...');
+        }
+    });
+
+    socket.on('team-name-updated', (data) => {
+        // Update global team names
+        teamNames[data.team] = data.name;
+        
+        // Update input field
+        if (data.team === 'blue') {
+            const blueInput = document.getElementById('blue-team-name');
+            if (blueInput) blueInput.value = data.name;
+        } else if (data.team === 'red') {
+            const redInput = document.getElementById('red-team-name');
+            if (redInput) redInput.value = data.name;
+        }
+        
+        // Update team input states
+        updateTeamInputStates();
+        
+        console.log(`Názov tímu ${data.team} zmenený na: ${data.name}`);
+    });
+
+    socket.on('phase-change', (data) => {
+        console.log('Fáza sa zmenila na:', data.phase);
+        currentPhase = data.phase; // Update current phase tracking
+        
+        if (data.phase === 'combined-selection') {
+            // Hide team selection, show combined selection (like all-vs-all)
+            const teamSelection = document.getElementById('lobby-team-selection');
+            const playersSection = document.getElementById('lobby-players');
+            const characterSelection = document.getElementById('lobby-character-selection');
+            const tankSelection = document.getElementById('lobby-tank-selection');
+            const mapSelection = document.getElementById('lobby-map-selection');
+            const readySection = document.getElementById('lobby-ready-section');
+            
+            // Hide team selection
+            if (teamSelection) teamSelection.style.display = 'none';
+            
+            // Show all selection sections like in all-vs-all
+            if (playersSection) playersSection.style.display = 'block';
+            if (characterSelection) characterSelection.style.display = 'block';
+            if (tankSelection) tankSelection.style.display = 'block';
+            if (mapSelection) mapSelection.style.display = 'block';
+            if (readySection) readySection.style.display = 'block';
+            
+            // Scroll to top to show character selection first (with delay to ensure DOM is updated)
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                document.documentElement.scrollTop = 0; // Force immediate scroll as backup
+                document.body.scrollTop = 0; // For older browsers
+            }, 100);
+            
+            // Hide team status displays in selection screens
+            const teamSelectionStatus = document.getElementById('team-selection-status');
+            const teamCharacterStatus = document.getElementById('team-character-status');
+            const teamTankStatus = document.getElementById('team-tank-status');
+            const teamMapStatus = document.getElementById('team-map-status');
+            
+            if (teamSelectionStatus) teamSelectionStatus.style.display = 'none';
+            if (teamCharacterStatus) teamCharacterStatus.style.display = 'none';
+            if (teamTankStatus) teamTankStatus.style.display = 'none';
+            if (teamMapStatus) teamMapStatus.style.display = 'none';
+            
+            // Show game ready button instead of team ready button for final game start
+            const teamReadyBtn = document.getElementById('team-ready-btn');
+            const allVsAllReadyBtn = document.getElementById('all-vs-all-ready-btn');
+            const gameReadyBtn = document.getElementById('game-ready-btn');
+            
+            // Hide the old ready buttons and show the new game ready button
+            if (teamReadyBtn) teamReadyBtn.style.display = 'none';
+            if (allVsAllReadyBtn) allVsAllReadyBtn.style.display = 'none';
+            if (gameReadyBtn) {
+                gameReadyBtn.style.display = 'inline-block';
+                gameReadyBtn.disabled = false;
+            }
+            
+            // Update displays
+            updatePlayersList(); // Show normal players list
+            updateMapVotingDisplay({});
+            
+            console.log('Prechod do combined selection (ako all-vs-all)');
+        } else if (data.phase === 'character-selection') {
+            // Hide team selection, show character selection
+            const teamSelection = document.getElementById('lobby-team-selection');
+            const characterSelection = document.getElementById('lobby-character-selection');
+            
+            if (teamSelection) teamSelection.style.display = 'none';
+            if (characterSelection) characterSelection.style.display = 'block';
+            
+            console.log('Prechod do výberu charakterov');
+        } else if (data.phase === 'tank-selection') {
+            // Hide character selection, show tank selection
+            const characterSelection = document.getElementById('lobby-character-selection');
+            const tankSelection = document.getElementById('lobby-tank-selection');
+            
+            if (characterSelection) characterSelection.style.display = 'none';
+            if (tankSelection) tankSelection.style.display = 'block';
+            
+            console.log('Prechod do výberu tankov');
+        } else if (data.phase === 'map-selection') {
+            // Hide tank selection, show map selection
+            const tankSelection = document.getElementById('lobby-tank-selection');
+            const mapSelection = document.getElementById('lobby-map-selection');
+            
+            if (tankSelection) tankSelection.style.display = 'none';
+            if (mapSelection) mapSelection.style.display = 'block';
+            
+            console.log('Prechod do výberu máp');
+        }
+    });
+
+    socket.on('character-selected', (data) => {
+        console.log(`Hráč ${data.playerName} z tímu ${data.team} vybral charakter ${data.characterKey}`);
+        updateTeamSelectionDisplay();
+    });
+
+    socket.on('tank-selected', (data) => {
+        console.log(`Hráč ${data.playerName} z tímu ${data.team} vybral tank ${data.tankType}`);
+        updateTeamSelectionDisplay();
+    });
+
+    socket.on('map-vote-updated', (data) => {
+        console.log('Hlasovanie o mape aktualizované:', data);
+        updateMapVotingDisplay(data.mapVotes);
+    });
+
+// Function to update team selection display for all phases
+function updateTeamSelectionDisplay() {
+    // Update team displays in all selection phases
+    updateCharacterTeamDisplay();
+    updateTankTeamDisplay();
+    updateMapTeamDisplay();
+    
+    // Also update the main team UI if visible
+    if (document.getElementById('lobby-team-selection').style.display !== 'none') {
+        updateTeamUI();
+    }
+}
+
+function updateCharacterTeamDisplay() {
+    const blueTeamPlayers = document.getElementById('blue-team-character-players');
+    const redTeamPlayers = document.getElementById('red-team-character-players');
+    const blueTeamCount = document.getElementById('blue-team-character-count');
+    const redTeamCount = document.getElementById('red-team-character-count');
+    const blueTeamTitle = document.getElementById('blue-team-character-title');
+    const redTeamTitle = document.getElementById('red-team-character-title');
+    
+    if (!blueTeamPlayers || !redTeamPlayers) return;
+    
+    // Update team names
+    if (blueTeamTitle) blueTeamTitle.textContent = teamNames.blue || 'Modrý tím';
+    if (redTeamTitle) redTeamTitle.textContent = teamNames.red || 'Červený tím';
+    
+    // Clear and update player lists
+    blueTeamPlayers.innerHTML = '';
+    redTeamPlayers.innerHTML = '';
+    
+    let bluePlayers = [];
+    let redPlayers = [];
+    
+    allPlayers.forEach(player => {
+        if (player.team === 'blue') {
+            bluePlayers.push(player);
+        } else if (player.team === 'red') {
+            redPlayers.push(player);
+        }
+    });
+    
+    // Display blue team players with character selection status
+    bluePlayers.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'team-player-item';
+        
+        const hasSelectedCharacter = player.selectedCharacter ? '✓' : '⏳';
+        const characterInfo = player.selectedCharacter ? 
+            `- ${getCharacterName(player.selectedCharacter)}` : '';
+            
+        playerElement.innerHTML = `
+            <span>${player.name} ${characterInfo}</span>
+            <span class="selection-status">${hasSelectedCharacter}</span>
+        `;
+        blueTeamPlayers.appendChild(playerElement);
+    });
+    
+    // Display red team players with character selection status
+    redPlayers.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'team-player-item';
+        
+        const hasSelectedCharacter = player.selectedCharacter ? '✓' : '⏳';
+        const characterInfo = player.selectedCharacter ? 
+            `- ${getCharacterName(player.selectedCharacter)}` : '';
+            
+        playerElement.innerHTML = `
+            <span>${player.name} ${characterInfo}</span>
+            <span class="selection-status">${hasSelectedCharacter}</span>
+        `;
+        redTeamPlayers.appendChild(playerElement);
+    });
+    
+    // Update counts
+    if (blueTeamCount) blueTeamCount.textContent = `${bluePlayers.length} hráčov`;
+    if (redTeamCount) redTeamCount.textContent = `${redPlayers.length} hráčov`;
+}
+
+function updateTankTeamDisplay() {
+    const blueTeamPlayers = document.getElementById('blue-team-tank-players');
+    const redTeamPlayers = document.getElementById('red-team-tank-players');
+    const blueTeamCount = document.getElementById('blue-team-tank-count');
+    const redTeamCount = document.getElementById('red-team-tank-count');
+    const blueTeamTitle = document.getElementById('blue-team-tank-title');
+    const redTeamTitle = document.getElementById('red-team-tank-title');
+    
+    if (!blueTeamPlayers || !redTeamPlayers) return;
+    
+    // Update team names
+    if (blueTeamTitle) blueTeamTitle.textContent = teamNames.blue || 'Modrý tím';
+    if (redTeamTitle) redTeamTitle.textContent = teamNames.red || 'Červený tím';
+    
+    // Clear and update player lists
+    blueTeamPlayers.innerHTML = '';
+    redTeamPlayers.innerHTML = '';
+    
+    let bluePlayers = [];
+    let redPlayers = [];
+    
+    allPlayers.forEach(player => {
+        if (player.team === 'blue') {
+            bluePlayers.push(player);
+        } else if (player.team === 'red') {
+            redPlayers.push(player);
+        }
+    });
+    
+    // Display blue team players with tank selection status
+    bluePlayers.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'team-player-item';
+        
+        const hasSelectedTank = player.selectedTank ? '✓' : '⏳';
+        const tankInfo = player.selectedTank ? 
+            `- ${getTankName(player.selectedTank)}` : '';
+            
+        playerElement.innerHTML = `
+            <span>${player.name} ${tankInfo}</span>
+            <span class="selection-status">${hasSelectedTank}</span>
+        `;
+        blueTeamPlayers.appendChild(playerElement);
+    });
+    
+    // Display red team players with tank selection status
+    redPlayers.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'team-player-item';
+        
+        const hasSelectedTank = player.selectedTank ? '✓' : '⏳';
+        const tankInfo = player.selectedTank ? 
+            `- ${getTankName(player.selectedTank)}` : '';
+            
+        playerElement.innerHTML = `
+            <span>${player.name} ${tankInfo}</span>
+            <span class="selection-status">${hasSelectedTank}</span>
+        `;
+        redTeamPlayers.appendChild(playerElement);
+    });
+    
+    // Update counts
+    if (blueTeamCount) blueTeamCount.textContent = `${bluePlayers.length} hráčov`;
+    if (redTeamCount) redTeamCount.textContent = `${redPlayers.length} hráčov`;
+}
+
+function updateMapTeamDisplay() {
+    const blueTeamPlayers = document.getElementById('blue-team-map-players');
+    const redTeamPlayers = document.getElementById('red-team-map-players');
+    const blueTeamCount = document.getElementById('blue-team-map-count');
+    const redTeamCount = document.getElementById('red-team-map-count');
+    const blueTeamTitle = document.getElementById('blue-team-map-title');
+    const redTeamTitle = document.getElementById('red-team-map-title');
+    
+    if (!blueTeamPlayers || !redTeamPlayers) return;
+    
+    // Update team names
+    if (blueTeamTitle) blueTeamTitle.textContent = teamNames.blue || 'Modrý tím';
+    if (redTeamTitle) redTeamTitle.textContent = teamNames.red || 'Červený tím';
+    
+    // Clear and update player lists
+    blueTeamPlayers.innerHTML = '';
+    redTeamPlayers.innerHTML = '';
+    
+    let bluePlayers = [];
+    let redPlayers = [];
+    
+    allPlayers.forEach(player => {
+        if (player.team === 'blue') {
+            bluePlayers.push(player);
+        } else if (player.team === 'red') {
+            redPlayers.push(player);
+        }
+    });
+    
+    // Display blue team players with map voting status
+    bluePlayers.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'team-player-item';
+        
+        const hasVoted = player.hasVotedMap ? '✓' : '⏳';
+        const voteInfo = player.votedMap ? 
+            `- Mapa ${player.votedMap}` : '';
+            
+        playerElement.innerHTML = `
+            <span>${player.name} ${voteInfo}</span>
+            <span class="selection-status">${hasVoted}</span>
+        `;
+        blueTeamPlayers.appendChild(playerElement);
+    });
+    
+    // Display red team players with map voting status
+    redPlayers.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'team-player-item';
+        
+        const hasVoted = player.hasVotedMap ? '✓' : '⏳';
+        const voteInfo = player.votedMap ? 
+            `- Mapa ${player.votedMap}` : '';
+            
+        playerElement.innerHTML = `
+            <span>${player.name} ${voteInfo}</span>
+            <span class="selection-status">${hasVoted}</span>
+        `;
+        redTeamPlayers.appendChild(playerElement);
+    });
+    
+    // Update counts
+    if (blueTeamCount) blueTeamCount.textContent = `${bluePlayers.length} hráčov`;
+    if (redTeamCount) redTeamCount.textContent = `${redPlayers.length} hráčov`;
+}
+
+// Helper functions to get display names
+function getCharacterName(characterKey) {
+    const characterNames = {
+        'jaccelini': 'M. Jaklović',
+        'tvaruzhkyn': 'J. Tvaruzhkyn',
+        'kindergarden': 'J. W. Gardens',
+        'landmann': 'Herr Landmann',
+        // Add more character names as needed
+    };
+    return characterNames[characterKey] || characterKey;
+}
+
+function getTankName(tankType) {
+    const tankNames = {
+        'purple': 'Obrnený Bojovník',
+        'orange': 'Rýchly Útočník',
+        'brown': 'Ťažký Moloch'
+    };
+    return tankNames[tankType] || tankType;
+}
+
+// Function to update map voting display for team mode
+function updateMapVotingDisplay(mapVotes) {
+    const mapCards = document.querySelectorAll('#lobby-map-cards .lobby-map-card');
+    
+    // Ensure mapVotes is defined
+    if (!mapVotes) mapVotes = {};
+    
+    mapCards.forEach(card => {
+        const mapId = card.dataset.map;
+        const voteCount = mapVotes[mapId] ? mapVotes[mapId].length : 0;
+        
+        // Update vote counter
+        let voteCounter = card.querySelector('.vote-counter');
+        if (!voteCounter) {
+            voteCounter = document.createElement('div');
+            voteCounter.className = 'vote-counter';
+            card.appendChild(voteCounter);
+        }
+        voteCounter.textContent = `${voteCount} hlasov`;
+        
+        // Highlight most voted map
+        card.classList.remove('most-voted');
+        if (voteCount > 0) {
+            const maxVotes = Math.max(...Object.values(mapVotes).map(votes => votes ? votes.length : 0));
+            if (voteCount === maxVotes) {
+                card.classList.add('most-voted');
+            }
+        }
+    });
+}
+    
+    socket.on('room-created', (data) => {
+        console.log('Miestnosť vytvorená:', data);
         isHost = data.hostId === socket.id;
         currentRoom = data.roomId; // Set current room ID
         selectedLobbyMap = data.selectedMap;
@@ -114,6 +662,15 @@ function initMultiplayer(gameMode = '1v1') {
     socket.on('player-position', (data) => {
         const otherTank = multiplayerTanks.get(data.playerId);
         if (otherTank) {
+            // Only log occasionally to avoid spam
+            if (Math.random() < 0.01) {
+                console.log(`Receiving position update for player ${data.playerId}:`, {
+                    from: { x: otherTank.x, y: otherTank.y },
+                    to: { x: data.x, y: data.y },
+                    timestamp: data.timestamp
+                });
+            }
+            
             // Store previous position for interpolation
             otherTank.prevX = otherTank.x;
             otherTank.prevY = otherTank.y;
@@ -129,6 +686,8 @@ function initMultiplayer(gameMode = '1v1') {
             // Reset interpolation timer
             otherTank.interpolationTime = 0;
             otherTank.lastUpdateTime = Date.now();
+        } else {
+            console.warn(`No tank found for player ${data.playerId}`);
         }
     });
 
@@ -198,78 +757,320 @@ function initMultiplayer(gameMode = '1v1') {
 // Update lobby UI
 function updateLobbyUI(data) {
     const lobbyStatus = document.getElementById('lobby-status');
-    const lobbyPlayers = document.getElementById('lobby-players');
-    const playersList = document.getElementById('players-list');
-    const readyBtn = document.getElementById('ready-btn');
-    const readySection = document.getElementById('lobby-ready-section');
-    const waitingDiv = document.getElementById('lobby-waiting');
-    const mapSelection = document.getElementById('lobby-map-selection');
-    const characterSelection = document.getElementById('lobby-character-selection');
-    const tankSelection = document.getElementById('lobby-tank-selection');
     
     // Get game mode name
     const gameModeNames = {
-        '1v1': '1 vs 1',
-        '2v2': '2 vs 2 (Tímy)',
-        '3v3': '3 vs 3 (Tímy)',
-        'free-for-all-3': 'Voľný súboj (3 hráči)',
-        'free-for-all-4': 'Voľný súboj (4 hráči)',
-        'free-for-all-6': 'Voľný súboj (6 hráčov)',
-        'unlimited': 'Neobmedzený (2-16 hráčov)'
+        'all-vs-all': 'All vs. All (Každý proti každému)',
+        'team-vs-team': 'Team vs. Team (Tímový súboj)'
     };
     const gameModeName = gameModeNames[data.gameMode] || data.gameMode;
     
     lobbyStatus.innerHTML = `
         <p>Pripojený k serveru - Miestnosť: ${data.roomId} ${isHost ? '(Host)' : ''}</p>
         <p>Herný mód: <strong>${gameModeName}</strong></p>
-        ${data.teamMode ? '<p style="color: #3498db;">🛡️ Tímový režim</p>' : '<p style="color: #e67e22;">⚔️ Každý proti každému</p>'}
     `;
     
-    // Show players section
-    lobbyPlayers.style.display = 'block';
-    
     // Update players list
+    allPlayers = data.players || [];
+    updateLobbyDisplay();
+}
+
+function updateLobbyDisplay() {
+    // Show/hide appropriate lobby sections based on game mode
+    const teamSelection = document.getElementById('lobby-team-selection');
+    const playersSection = document.getElementById('lobby-players');
+    const characterSelection = document.getElementById('lobby-character-selection');
+    const tankSelection = document.getElementById('lobby-tank-selection');
+    const mapSelection = document.getElementById('lobby-map-selection');
+    const readySection = document.getElementById('lobby-ready-section');
+    const waitingDiv = document.getElementById('lobby-waiting');
+    
+    // Hide all sections first
+    teamSelection.style.display = 'none';
+    playersSection.style.display = 'none';
+    characterSelection.style.display = 'none';
+    tankSelection.style.display = 'none';
+    mapSelection.style.display = 'none';
+    readySection.style.display = 'none';
+    waitingDiv.style.display = 'none';
+    
+    // Hide all ready buttons
+    const teamReadyBtn = document.getElementById('team-ready-btn');
+    const allVsAllReadyBtn = document.getElementById('all-vs-all-ready-btn');
+    const readyBtn = document.getElementById('ready-btn');
+    
+    if (teamReadyBtn) teamReadyBtn.style.display = 'none';
+    if (allVsAllReadyBtn) allVsAllReadyBtn.style.display = 'none';
+    if (readyBtn) readyBtn.style.display = 'none';
+    
+    if (selectedGameMode === 'team-vs-team') {
+        // Show team selection for team mode
+        teamSelection.style.display = 'block';
+        // Add ready button to team selection area
+        if (teamReadyBtn) teamReadyBtn.style.display = 'inline-block';
+    } else {
+        // Show all sections for all-vs-all mode
+        playersSection.style.display = 'block';
+        characterSelection.style.display = 'block';
+        tankSelection.style.display = 'block';
+        mapSelection.style.display = 'block';
+        readySection.style.display = 'block';
+        
+        if (allVsAllReadyBtn) {
+            allVsAllReadyBtn.style.display = 'inline-block';
+        }
+        
+        updatePlayersList();
+        updateAllVsAllReadyState();
+        updateMapVotingDisplay({});
+    }
+}
+
+function updatePlayersList() {
+    const playersList = document.getElementById('players-list');
+    
+    if (!playersList) return;
+    
     playersList.innerHTML = '';
     
-    if (data.teamMode && data.teams) {
-        // Show teams separately
-        const team1Players = data.players.filter(p => p.team === 'team1');
-        const team2Players = data.players.filter(p => p.team === 'team2');
+    allPlayers.forEach(player => {
+        const playerDiv = document.createElement('div');
+        playerDiv.className = 'player-item';
         
-        // Team 1
-        if (team1Players.length > 0) {
-            const team1Header = document.createElement('div');
-            team1Header.className = 'team-header team1';
-            team1Header.innerHTML = '<h4>🔵 Tím 1</h4>';
-            playersList.appendChild(team1Header);
-            
-            team1Players.forEach(player => {
-                const playerDiv = createPlayerItem(player, data.hostId);
-                playerDiv.classList.add('team1-player');
-                playersList.appendChild(playerDiv);
-            });
+        // Check for game ready status when game-ready-btn is visible
+        let isPlayerReady = false;
+        let readyText = 'Čaká';
+        
+        const gameReadyBtn = document.getElementById('game-ready-btn');
+        const isGameReadyBtnVisible = gameReadyBtn && gameReadyBtn.style.display !== 'none';
+        
+        if (isGameReadyBtnVisible && selectedGameMode === 'team-vs-team' && currentPhase === 'combined-selection') {
+            // Use game ready status
+            isPlayerReady = gameReadyPlayers.has(player.id);
+            readyText = isPlayerReady ? 'Ready na hru' : 'Nie je ready na hru';
+        } else if (selectedGameMode === 'team-vs-team' && currentPhase === 'combined-selection') {
+            // Use team ready status
+            isPlayerReady = teamReadyPlayers.has(player.id);
+            readyText = isPlayerReady ? 'Pripravený' : 'Čaká';
+        } else {
+            // Use regular ready status
+            isPlayerReady = player.ready;
+            readyText = isPlayerReady ? 'Pripravený' : 'Čaká';
         }
         
-        // Team 2
-        if (team2Players.length > 0) {
-            const team2Header = document.createElement('div');
-            team2Header.className = 'team-header team2';
-            team2Header.innerHTML = '<h4>🔴 Tím 2</h4>';
-            playersList.appendChild(team2Header);
-            
-            team2Players.forEach(player => {
-                const playerDiv = createPlayerItem(player, data.hostId);
-                playerDiv.classList.add('team2-player');
-                playersList.appendChild(playerDiv);
-            });
+        const isReady = isPlayerReady ? 'player-ready' : 'player-waiting';
+        
+        // Show team info for team mode
+        let teamInfo = '';
+        if (selectedGameMode === 'team-vs-team' && player.team) {
+            teamInfo = ` (${player.team === 'blue' ? 'Modrý' : 'Červený'} tím)`;
+        }
+        
+        playerDiv.innerHTML = `
+            <span>${player.name}${teamInfo} ${player.id === socket.id ? '(Ty)' : ''}</span>
+            <span class="${isReady}">${readyText}</span>
+        `;
+        
+        playersList.appendChild(playerDiv);
+    });
+    
+    // Update host controls visibility - only for all-vs-all mode
+    const hostControls = document.getElementById('host-controls');
+    if (hostControls) {
+        if (isHost && selectedGameMode === 'all-vs-all') {
+            hostControls.style.display = 'block';
+            console.log('Debug - Host controls shown for all-vs-all'); // Debug log
+        } else {
+            hostControls.style.display = 'none';
+            console.log('Debug - Host controls hidden for team mode or non-host'); // Debug log
+        }
+    }
+}
+
+function showLobbySection(section) {
+    const sections = [
+        'lobby-team-selection',
+        'lobby-players', 
+        'lobby-character-selection',
+        'lobby-tank-selection',
+        'lobby-map-selection',
+        'lobby-ready-section',
+        'lobby-waiting'
+    ];
+    
+    // Hide all sections
+    sections.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.style.display = 'none';
+    });
+    
+    // Show requested section
+    const targetElement = document.getElementById(`lobby-${section}-selection`);
+    if (targetElement) {
+        targetElement.style.display = 'block';
+    }
+}
+
+// Team management functions
+
+function joinTeam(teamName) {
+    if (!socket || !isMultiplayer || selectedGameMode !== 'team-vs-team') return;
+    
+    // If already on this team, leave it
+    if (playerTeam === teamName) {
+        playerTeam = null;
+        socket.emit('leave-team');
+    } else {
+        // Join the new team
+        playerTeam = teamName;
+        socket.emit('join-team', { team: teamName });
+    }
+}
+
+function togglePlayerReady() {
+    if (!socket || !isMultiplayer) return;
+    
+    socket.emit('toggle-ready');
+}
+
+function updateTeamUI() {
+    const blueTeamContainer = document.getElementById('blue-team-players');
+    const redTeamContainer = document.getElementById('red-team-players');
+    
+    if (!blueTeamContainer || !redTeamContainer || !allPlayers) return;
+    
+    // Clear containers
+    blueTeamContainer.innerHTML = '';
+    redTeamContainer.innerHTML = '';
+    
+    // Separate players by team
+    const blueTeamPlayers = allPlayers.filter(p => p.team === 'blue');
+    const redTeamPlayers = allPlayers.filter(p => p.team === 'red');
+    
+    // Add players to team containers
+    blueTeamPlayers.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'team-player-item';
+        playerElement.innerHTML = `
+            <span class="player-name">${player.name || 'Player'}</span>
+            ${player.id === currentRoom?.hostId ? '<span class="host-badge">HOST</span>' : ''}
+            ${player.ready ? '<span class="ready-badge">READY</span>' : ''}
+        `;
+        blueTeamContainer.appendChild(playerElement);
+    });
+    
+    redTeamPlayers.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'team-player-item';
+        playerElement.innerHTML = `
+            <span class="player-name">${player.name || 'Player'}</span>
+            ${player.id === currentRoom?.hostId ? '<span class="host-badge">HOST</span>' : ''}
+            ${player.ready ? '<span class="ready-badge">READY</span>' : ''}
+        `;
+        redTeamContainer.appendChild(playerElement);
+    });
+    
+    // Update team counts
+    const blueTeamCount = document.getElementById('blue-team-count');
+    const redTeamCount = document.getElementById('red-team-count');
+    
+    if (blueTeamCount) blueTeamCount.textContent = `${blueTeamPlayers.length} hráčov`;
+    if (redTeamCount) redTeamCount.textContent = `${redTeamPlayers.length} hráčov`;
+    
+    updateJoinButtonsState();
+}
+
+function updateJoinButtonsState() {
+    const joinBlueBtn = document.querySelector('.join-team-btn[data-team="blue"]');
+    const joinRedBtn = document.querySelector('.join-team-btn[data-team="red"]');
+    const readyBtn = document.getElementById('team-ready-btn');
+    
+    if (!joinBlueBtn || !joinRedBtn || !readyBtn) return;
+    
+    // Update join button states
+    if (playerTeam === 'blue') {
+        joinBlueBtn.textContent = 'OPUSTIŤ TÍM';
+        joinBlueBtn.classList.add('selected');
+        joinRedBtn.textContent = 'PRIDAŤ SA K ČERVENÉMU TÍMU';
+        joinRedBtn.classList.remove('selected');
+    } else if (playerTeam === 'red') {
+        joinRedBtn.textContent = 'OPUSTIŤ TÍM';
+        joinRedBtn.classList.add('selected');
+        joinBlueBtn.textContent = 'PRIDAŤ SA K MODRÉMU TÍMU';
+        joinBlueBtn.classList.remove('selected');
+    } else {
+        joinBlueBtn.textContent = 'PRIDAŤ SA K MODRÉMU TÍMU';
+        joinBlueBtn.classList.remove('selected');
+        joinRedBtn.textContent = 'PRIDAŤ SA K ČERVENÉMU TÍMU';
+        joinRedBtn.classList.remove('selected');
+    }
+    
+    // Update ready button state
+    const currentPlayer = allPlayers.find(p => p.id === socket.id);
+    if (currentPlayer && playerTeam) {
+        readyBtn.style.display = 'block';
+        readyBtn.disabled = false;
+        readyBtn.textContent = currentPlayer.ready ? 'ZRUŠ PRIPRAVENOSŤ' : 'SOM PRIPRAVENÝ';
+        readyBtn.classList.toggle('ready', currentPlayer.ready);
+    } else {
+        readyBtn.style.display = 'none';
+    }
+    
+    // Show host controls for starting selection
+    const hostStartSelectionBtn = document.getElementById('host-start-selection-btn');
+    const hostStartBtn = document.getElementById('host-start-game-btn');
+    const hostLockBtn = document.getElementById('host-lock-room-btn-main');
+    
+    console.log('Debug - hostLockBtn found:', !!hostLockBtn); // Debug log
+    console.log('Debug - isHost:', isHost, 'selectedGameMode:', selectedGameMode); // Debug log
+    console.log('Debug - currentRoom:', currentRoom); // Debug log
+    
+    // Show/hide host controls - only for all-vs-all mode
+    const hostControls = document.getElementById('host-controls');
+    if (isHost && selectedGameMode === 'all-vs-all') {
+        if (hostControls) {
+            hostControls.style.display = 'block';
+        }
+        if (hostLockBtn) {
+            console.log('Debug - Setting hostLockBtn to block (host, all-vs-all)'); // Debug log
+            hostLockBtn.style.display = 'block';
         }
     } else {
-        // Show players without teams
-        data.players.forEach(player => {
-            const playerDiv = createPlayerItem(player, data.hostId);
-            playersList.appendChild(playerDiv);
-        });
+        if (hostControls) {
+            hostControls.style.display = 'none';
+        }
+        if (hostLockBtn) {
+            console.log('Debug - Setting hostLockBtn to none (team mode or not host)'); // Debug log
+            hostLockBtn.style.display = 'none';
+        }
     }
+    
+    // Host start buttons logic - only for all-vs-all mode
+    if (isHost && selectedGameMode === 'all-vs-all') {
+        if (hostStartBtn) {
+            hostStartBtn.style.display = 'block';
+            
+            if (allPlayers.length >= 2) {
+                hostStartBtn.disabled = false;
+                hostStartBtn.textContent = 'SPUSTIŤ HRU';
+            } else {
+                hostStartBtn.disabled = true;
+                hostStartBtn.textContent = `POTREBUJETE ASPOŇ 2 HRÁČOV (${allPlayers.length}/2)`;
+            }
+        }
+        if (hostStartSelectionBtn) {
+            hostStartSelectionBtn.style.display = 'none';
+        }
+    } else {
+        // Hide both buttons for team mode or non-hosts
+        if (hostStartSelectionBtn) {
+            hostStartSelectionBtn.style.display = 'none';
+        }
+        if (hostStartBtn) {
+            hostStartBtn.style.display = 'none';
+        }
+    }
+}
 
 function createPlayerItem(player, hostId) {
     const isPlayerHost = player.id === hostId;
@@ -296,128 +1097,20 @@ function createPlayerItem(player, hostId) {
     
     return playerDiv;
 }
+
+function createPlayerItem(player, hostId) {
+    const isPlayerHost = player.id === hostId;
     
-    // Show selection sections based on game mode and phase
-    const canShowSelections = data.gameMode === 'unlimited' ? 
-        data.selectionPhase : 
-        (data.playersCount >= data.maxPlayers);
+    const playerDiv = document.createElement('div');
+    playerDiv.className = 'team-player-item';
     
-    if (canShowSelections) {
-        characterSelection.style.display = 'block';
-        tankSelection.style.display = 'block';
-        mapSelection.style.display = 'block';
-        initCharacterSelection();
-        initTankSelection();
-        initMapSelection();
-        updateMapSelection(selectedLobbyMap);
-        readySection.style.display = 'block';
-        waitingDiv.style.display = 'none';
-    } else {
-        characterSelection.style.display = 'none';
-        tankSelection.style.display = 'none';
-        mapSelection.style.display = 'none';
-        readySection.style.display = 'none';
-        waitingDiv.style.display = 'block';
-        
-        if (data.gameMode === 'unlimited' && !data.selectionPhase) {
-            waitingDiv.innerHTML = `<p>Čakám na spustenie výberu od hosta... (${data.playersCount} hráčov pripojených)</p><div id="waiting-dots">●●●</div>`;
-        } else {
-            waitingDiv.innerHTML = `<p>Čakám na ďalších hráčov... (${data.playersCount}/${data.maxPlayers})</p><div id="waiting-dots">●●●</div>`;
-        }
-    }
+    playerDiv.innerHTML = `
+        <span class="player-name">${player.name || 'Player'}</span>
+        ${isPlayerHost ? '<span class="host-badge">HOST</span>' : ''}
+        ${player.ready ? '<span class="ready-badge">READY</span>' : ''}
+    `;
     
-    // Show ready button if not ready yet and all selections made
-    const myPlayer = data.players.find(p => p.id === socket.id);
-    if (myPlayer && !myPlayer.ready && data.playersCount >= data.maxPlayers) {
-        const hasSelections = selectedLobbyCharacter && selectedLobbyTank;
-        if (hasSelections) {
-            readyBtn.style.display = 'block';
-            readyBtn.onclick = () => {
-                socket.emit('player-ready');
-                readyBtn.style.display = 'none';
-            };
-        } else {
-            readyBtn.style.display = 'none';
-        }
-    } else {
-        readyBtn.style.display = 'none';
-    }
-    
-    // Handle host buttons for unlimited mode
-    const hostStartSelectionBtn = document.getElementById('host-start-selection-btn');
-    const hostStartBtn = document.getElementById('host-start-game-btn');
-    
-    console.log('UpdateLobbyUI - Unlimited mode check:', data.gameMode === 'unlimited');
-    console.log('UpdateLobbyUI - Is host:', isHost);
-    console.log('UpdateLobbyUI - Selection phase:', data.selectionPhase);
-    console.log('UpdateLobbyUI - Selection button found:', !!hostStartSelectionBtn);
-    
-    if (isHost && data.gameMode === 'unlimited') {
-        if (!data.selectionPhase) {
-            // Show selection start button
-            if (hostStartSelectionBtn) {
-                console.log('Setting up selection start button');
-                hostStartSelectionBtn.style.display = 'block';
-                hostStartSelectionBtn.onclick = () => {
-                    console.log('Selection button clicked, sending event');
-                    console.log('Socket connected:', socket && socket.connected);
-                    console.log('Current room:', currentRoom);
-                    if (socket && currentRoom) {
-                        console.log('Emitting host-start-selection event');
-                        socket.emit('host-start-selection');
-                        console.log('Event emitted');
-                    } else {
-                        console.log('Socket or currentRoom not available:', { socket: !!socket, currentRoom });
-                    }
-                };
-                
-                if (data.players.length >= data.minPlayers) {
-                    hostStartSelectionBtn.disabled = false;
-                    hostStartSelectionBtn.textContent = `Spustiť výber (${data.players.length} hráčov)`;
-                } else {
-                    hostStartSelectionBtn.disabled = true;
-                    hostStartSelectionBtn.textContent = `Potrebujete minimálne ${data.minPlayers} hráčov`;
-                }
-            }
-            
-            if (hostStartBtn) {
-                hostStartBtn.style.display = 'none';
-            }
-        } else {
-            // Selection phase is active, show game start button
-            if (hostStartSelectionBtn) {
-                hostStartSelectionBtn.style.display = 'none';
-            }
-            
-            if (hostStartBtn) {
-                hostStartBtn.style.display = 'block';
-                hostStartBtn.onclick = () => {
-                    if (socket && currentRoom) {
-                        socket.emit('host-start-game');
-                    }
-                };
-                
-                const readyCount = data.players.filter(p => p.ready).length;
-                const minPlayers = data.minPlayers || 2;
-                
-                if (readyCount >= minPlayers) {
-                    hostStartBtn.disabled = false;
-                    hostStartBtn.textContent = `Spustiť hru (${readyCount}/${data.players.length} pripravených)`;
-                } else {
-                    hostStartBtn.disabled = true;
-                    hostStartBtn.textContent = `Potrebujete minimálne ${minPlayers} pripravených hráčov`;
-                }
-            }
-        }
-    } else {
-        // Hide both buttons for non-hosts or other game modes
-        if (hostStartSelectionBtn) {
-            hostStartSelectionBtn.style.display = 'none';
-        }
-        if (hostStartBtn) {
-            hostStartBtn.style.display = 'none';
-        }
-    }
+    return playerDiv;
 }
 
 // Show error message in lobby
@@ -457,8 +1150,12 @@ function initCharacterSelection() {
 function selectLobbyCharacter(characterId) {
     selectedLobbyCharacter = characterId;
     
-    // Send to server
-    socket.emit('select-character', { characterId: characterId });
+    // Send to server - different events for different modes
+    if (selectedGameMode === 'team-vs-team') {
+        socket.emit('select-character', { characterKey: characterId });
+    } else {
+        socket.emit('select-character', { characterId: characterId });
+    }
     
     // Update UI immediately
     updateCharacterSelectionUI(characterId);
@@ -509,8 +1206,12 @@ function initTankSelection() {
 function selectLobbyTank(tankId) {
     selectedLobbyTank = tankId;
     
-    // Send to server
-    socket.emit('select-tank', { tankId: tankId });
+    // Send to server - different events for different modes
+    if (selectedGameMode === 'team-vs-team') {
+        socket.emit('select-tank', { tankType: tankId });
+    } else {
+        socket.emit('select-tank', { tankId: tankId });
+    }
     
     // Update UI immediately
     updateTankSelectionUI(tankId);
@@ -567,6 +1268,152 @@ function updateReadyButtonState() {
         readyBtn.disabled = !hasAllSelections;
         readyBtn.textContent = hasAllSelections ? 'Som pripravený!' : 'Vyber charakter a tank';
     }
+}
+
+function updateAllVsAllReadyState() {
+    const allVsAllReadyBtn = document.getElementById('all-vs-all-ready-btn');
+    if (allVsAllReadyBtn && allVsAllReadyBtn.style.display !== 'none') {
+        const hasCharacter = selectedLobbyCharacter;
+        const hasTank = selectedLobbyTank;
+        const hasMap = selectedLobbyMap;
+        
+        if (!hasCharacter) {
+            allVsAllReadyBtn.disabled = true;
+            allVsAllReadyBtn.textContent = 'Vyber charakter';
+        } else if (!hasTank) {
+            allVsAllReadyBtn.disabled = true;
+            allVsAllReadyBtn.textContent = 'Vyber tank';
+        } else if (!hasMap) {
+            allVsAllReadyBtn.disabled = true;
+            allVsAllReadyBtn.textContent = 'Vyber mapu';
+        } else {
+            allVsAllReadyBtn.disabled = false;
+            allVsAllReadyBtn.textContent = playerIsReady ? 'Pripravený!' : 'Som pripravený!';
+        }
+    }
+}
+
+function updateAllVsAllMapVotingDisplay() {
+    // Update map cards to show vote counts for all-vs-all mode
+    const mapCards = document.querySelectorAll('#lobby-map-cards .lobby-map-card');
+    mapCards.forEach(card => {
+        const mapId = card.dataset.map;
+        
+        // Remove existing vote counter
+        const existingCounter = card.querySelector('.vote-counter');
+        if (existingCounter) {
+            existingCounter.remove();
+        }
+        
+        // Add vote counter
+        const voteCounter = document.createElement('div');
+        voteCounter.className = 'vote-counter';
+        voteCounter.textContent = '0 hlasov';
+        card.appendChild(voteCounter);
+    });
+}
+
+// Lobby selection functions
+function selectLobbyCharacter(characterId) {
+    selectedLobbyCharacter = characterId;
+    
+    // Update visual selection
+    const characterCards = document.querySelectorAll('#lobby-character-cards .lobby-character-card');
+    characterCards.forEach(card => {
+        card.classList.remove('selected');
+        if (card.dataset.character === characterId) {
+            card.classList.add('selected');
+        }
+    });
+    
+    // Update selected character info
+    const selectedCharacterName = document.getElementById('selected-character-name');
+    if (selectedCharacterName && CHARACTERS[characterId]) {
+        selectedCharacterName.textContent = CHARACTERS[characterId].name;
+    }
+    
+    // Emit to server
+    if (socket && currentRoom) {
+        socket.emit('select-character', { characterId });
+    }
+    
+    updateAllVsAllReadyState();
+}
+
+function selectLobbyTank(tankId) {
+    selectedLobbyTank = tankId;
+    
+    // Update visual selection
+    const tankCards = document.querySelectorAll('#lobby-tank-cards .lobby-tank-card');
+    tankCards.forEach(card => {
+        card.classList.remove('selected');
+        if (card.dataset.tank === tankId) {
+            card.classList.add('selected');
+        }
+    });
+    
+    // Update selected tank info
+    const selectedTankName = document.getElementById('selected-tank-name');
+    const tankNames = {
+        'purple': 'Obrnený Bojovník',
+        'orange': 'Rýchly Útočník',
+        'brown': 'Ťažký Moloch'
+    };
+    if (selectedTankName) {
+        selectedTankName.textContent = tankNames[tankId] || tankId;
+    }
+    
+    // Emit to server
+    if (socket && currentRoom) {
+        socket.emit('select-tank', { tankId });
+    }
+    
+    updateAllVsAllReadyState();
+}
+
+function selectLobbyMap(mapId) {
+    console.log('selectLobbyMap called with:', mapId); // Debug log
+    selectedLobbyMap = mapId;
+    
+    // Update visual selection
+    const mapCards = document.querySelectorAll('#lobby-map-cards .lobby-map-card');
+    mapCards.forEach(card => {
+        card.classList.remove('selected');
+        if (card.dataset.map === mapId) {
+            card.classList.add('selected');
+        }
+    });
+    
+    // Emit to server based on game mode
+    if (socket && currentRoom) {
+        if (selectedGameMode === 'all-vs-all') {
+            // All vs all - map voting
+            console.log('Emitting vote-map:', mapId); // Debug log
+            socket.emit('vote-map', { mapId });
+        } else if (selectedGameMode === 'team-vs-team') {
+            // Team vs team - voting for all players
+            console.log('Emitting vote-map for team mode:', mapId); // Debug log
+            socket.emit('vote-map', { mapId });
+        }
+    } else {
+        console.log('Socket or currentRoom not available'); // Debug log
+    }
+    
+    updateAllVsAllReadyState();
+}
+
+function toggleAllVsAllReady() {
+    if (!selectedLobbyCharacter || !selectedLobbyTank || !selectedLobbyMap) {
+        return;
+    }
+    
+    playerIsReady = !playerIsReady;
+    
+    if (socket && currentRoom) {
+        socket.emit('toggle-ready', { ready: playerIsReady });
+    }
+    
+    updateAllVsAllReadyState();
 }
 
 // Helper functions for names
@@ -644,18 +1491,6 @@ function initMapSelection() {
 }
 
 // Select map in lobby (host only)
-function selectLobbyMap(mapId) {
-    if (!isHost) return;
-    
-    selectedLobbyMap = mapId;
-    
-    // Send to server
-    socket.emit('select-map', { mapId: mapId });
-    
-    // Update UI immediately
-    updateMapSelection(mapId);
-}
-
 // Update map selection UI
 function updateMapSelection(mapId) {
     const mapCards = document.querySelectorAll('.lobby-map-card');
@@ -733,6 +1568,9 @@ function startMultiplayerGame(data) {
     const myPlayerId = socket.id;
     const playerPositions = data.gameData.playerPositions || {};
     
+    console.log('Player positions from server:', playerPositions);
+    console.log('My player ID:', myPlayerId);
+    
     // Clear existing tanks
     multiplayerTanks.clear();
     gameState.enemies = [];
@@ -740,10 +1578,20 @@ function startMultiplayerGame(data) {
     // Create tanks for all players
     data.players.forEach(playerData => {
         const position = playerPositions[playerData.id];
-        if (!position) return;
+        if (!position) {
+            console.warn(`No position found for player ${playerData.id}`);
+            return;
+        }
         
         const isMyPlayer = playerData.id === myPlayerId;
         const characterKey = position.character || playerData.selectedCharacter || 'jaccelini';
+        
+        console.log(`Creating tank for player ${playerData.id}:`, {
+            isMyPlayer,
+            position: { x: position.x, y: position.y },
+            tankType: position.tankType,
+            character: characterKey
+        });
         
         const tank = new Tank(
             position.x, 
@@ -879,7 +1727,6 @@ const screens = {
     tutorial: document.getElementById('tutorial-screen'),
     modeSelection: document.getElementById('mode-selection'),
     characterSelection: document.getElementById('character-selection'),
-    mapSelection: document.getElementById('map-selection'),
     tankSelection: document.getElementById('tank-selection'),
     multiplayerNameEntry: document.getElementById('multiplayer-name-entry'),
     multiplayerModeSelection: document.getElementById('multiplayer-mode-selection'),
@@ -892,7 +1739,6 @@ const buttons = {
     start: document.getElementById('start-btn'),
     multiplayer: document.getElementById('multiplayer-btn'),
     tutorial: document.getElementById('tutorial-btn'),
-    end: document.getElementById('end-btn'),
     backToMenu: document.querySelectorAll('.back-to-menu')
 };
 
@@ -1004,7 +1850,7 @@ const CHARACTERS = {
     kindergarden: { name: 'J. W. Gardens', country: 'USA', image: 'zahry.jpg', flag: 'USA.png' },
     landmann: { name: 'Herr Landmann', country: 'Nemecko', image: 'zeman.jpg', flag: 'GER.png' },
     matthews: { name: 'A. Matthews', country: 'Spojené Kráľovstvo', image: 'Matous.jpg', flag: 'GBR.png' },
-    kushi: { name: 'P. Kushi', country: 'Japonsko', image: 'hrebenar.jpg', flag: 'JAP.png' },
+    Hrebekushi: { name: 'P. Hrebekushi', country: 'Japonsko', image: 'hrebenar.jpg', flag: 'JAP.png' },
     volenec: { name: 'J. Violencini', country: 'Taliansko', image: 'Volenec.JPG', flag: 'ITA.png' },
     vacu: { name: 'J. Ben Vakul', country: 'Izrael', image: 'vacu.png', flag: 'ISR.png' },
     ted: { name: 'T. J. Millner', country: 'Južná Afrika', image: 'ted.jpg', flag: 'RSA.png' },
@@ -2179,6 +3025,13 @@ function showScreen(screenName) {
     // Show the requested screen
     screens[screenName].classList.add('active');
     gameState.currentScreen = screenName;
+    
+    // Always scroll to top when changing screens
+    setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+    }, 10);
 
     // Fire a custom event for menu music control in index.html
     if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
@@ -2465,7 +3318,6 @@ function init() {
         showScreen('multiplayerNameEntry');
     });
     buttons.tutorial.addEventListener('click', () => showScreen('tutorial'));
-    buttons.end.addEventListener('click', () => window.close());
     buttons.backToMenu.forEach(btn => btn.addEventListener('click', () => {
         returnToMainMenu();
     }));
@@ -2939,8 +3791,12 @@ function init() {
     }
 
     // Keyboard event listeners for player control
-    window.addEventListener('keydown', (e) => gameState.keys[e.key.toLowerCase()] = true);
-    window.addEventListener('keyup', (e) => gameState.keys[e.key.toLowerCase()] = false);
+    window.addEventListener('keydown', (e) => {
+        if (e.key) gameState.keys[e.key.toLowerCase()] = true;
+    });
+    window.addEventListener('keyup', (e) => {
+        if (e.key) gameState.keys[e.key.toLowerCase()] = false;
+    });
     window.addEventListener('keydown', (e) => {
         // Allow shooting only if player tank exists and not in spectator mode
         if (e.code === 'Space' && gameState.currentScreen === 'game' && !gameState.roundOver && gameState.player && !gameState.isSpectating) {
@@ -3510,12 +4366,17 @@ function update() {
             Math.abs(gameState.player.turretAbsoluteAngle - oldTurretAngle) > 0.01
         )) {
             lastNetworkSync = now;
-            socket.emit('player-position', {
+            const positionData = {
                 x: gameState.player.x,
                 y: gameState.player.y,
                 angle: gameState.player.angle,
                 turretAngle: gameState.player.turretAbsoluteAngle
-            });
+            };
+            // Only log occasionally to avoid spam
+            if (Math.random() < 0.01) {
+                console.log('Sending position update:', positionData);
+            }
+            socket.emit('player-position', positionData);
         }
     } else if (gameState.isSpectating) { // New: Spectator camera movement
         let moveX = 0;
@@ -5450,12 +6311,13 @@ document.head.appendChild(style);
 setTimeout(enableCharacterCardKeyboardScroll, 0);
 
 // --- MULTIPLAYER GAME MODE SELECTION ---
+
 function initMultiplayerModeSelection() {
     const gameModeCards = document.querySelectorAll('.game-mode-card');
     
     gameModeCards.forEach(card => {
         card.addEventListener('click', () => {
-            const selectedMode = card.dataset.mode;
+            selectedGameMode = card.dataset.mode;
             
             // Remove previous selection
             gameModeCards.forEach(c => c.classList.remove('selected'));
@@ -5465,10 +6327,189 @@ function initMultiplayerModeSelection() {
             
             // Start multiplayer with selected mode
             setTimeout(() => {
-                initMultiplayer(selectedMode);
+                initMultiplayer(selectedGameMode);
                 showScreen('multiplayerLobby');
+                // Scroll to top when entering lobby
+                setTimeout(() => {
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                    document.documentElement.scrollTop = 0;
+                    document.body.scrollTop = 0;
+                }, 50);
             }, 300);
         });
+    });
+}
+
+// Function to update team input states based on captain status
+function updateTeamInputStates() {
+    const blueTeamNameInput = document.getElementById('blue-team-name');
+    const redTeamNameInput = document.getElementById('red-team-name');
+    
+    if (blueTeamNameInput && redTeamNameInput) {
+        const isBlueTeamCaptain = playerTeam === 'blue' && teamCaptains.blue === socket.id;
+        const isRedTeamCaptain = playerTeam === 'red' && teamCaptains.red === socket.id;
+        
+        // Update blue team input
+        blueTeamNameInput.disabled = !isBlueTeamCaptain;
+        blueTeamNameInput.placeholder = isBlueTeamCaptain ? "Zadaj názov tímu..." : (teamNames.blue || "Názov tímu...");
+        blueTeamNameInput.style.cursor = isBlueTeamCaptain ? "text" : "default";
+        blueTeamNameInput.style.opacity = isBlueTeamCaptain ? "1" : "0.7";
+        
+        // Update red team input
+        redTeamNameInput.disabled = !isRedTeamCaptain;
+        redTeamNameInput.placeholder = isRedTeamCaptain ? "Zadaj názov tímu..." : (teamNames.red || "Názov tímu...");
+        redTeamNameInput.style.cursor = isRedTeamCaptain ? "text" : "default";
+        redTeamNameInput.style.opacity = isRedTeamCaptain ? "1" : "0.7";
+        
+        // Add visual indicators for captains
+        const blueTeamHeader = blueTeamNameInput.closest('.team-header');
+        const redTeamHeader = redTeamNameInput.closest('.team-header');
+        
+        if (blueTeamHeader) {
+            blueTeamHeader.classList.toggle('captain-editable', isBlueTeamCaptain);
+        }
+        if (redTeamHeader) {
+            redTeamHeader.classList.toggle('captain-editable', isRedTeamCaptain);
+        }
+    }
+}
+
+function joinTeam(team) {
+    if (socket && socket.connected) {
+        playerTeam = team;
+        socket.emit('join-team', { team: team, playerName: playerName });
+        
+        // Update UI
+        updateTeamUI();
+        updateJoinButtonsState();
+        updateTeamInputStates();
+    }
+}
+
+function togglePlayerReady() {
+    if (socket && socket.connected) {
+        // In combined-selection phase, allow ready without team check (players should already have teams)
+        if (currentPhase === 'combined-selection' || playerTeam) {
+            const isReady = teamReadyPlayers.has(socket.id);
+            
+            if (currentPhase === 'combined-selection') {
+                // Use team-ready event for combined selection
+                socket.emit('team-ready', { ready: !isReady });
+            } else {
+                // Use toggle-ready event for team selection phase
+                socket.emit('toggle-ready', { ready: !isReady });
+            }
+        }
+    }
+}
+
+function toggleGameReady() {
+    if (socket && socket.connected && currentPhase === 'combined-selection') {
+        const isGameReady = gameReadyPlayers && gameReadyPlayers.has(socket.id);
+        socket.emit('game-ready', { ready: !isGameReady });
+    }
+}
+
+function updateGameReadyUI() {
+    const gameReadyBtn = document.getElementById('game-ready-btn');
+    if (gameReadyBtn && currentPhase === 'combined-selection') {
+        const isCurrentPlayerGameReady = gameReadyPlayers.has(socket.id);
+        gameReadyBtn.textContent = isCurrentPlayerGameReady ? 'Zrušiť ready na hru' : 'Ready na hru!';
+        
+        // Update player list to show game ready status
+        updatePlayersList();
+    }
+}
+
+function updateTeamUI() {
+    const blueTeamPlayers = document.getElementById('blue-team-players');
+    const redTeamPlayers = document.getElementById('red-team-players');
+    const blueTeamCount = document.getElementById('blue-team-count');
+    const redTeamCount = document.getElementById('red-team-count');
+    const readyPlayersCount = document.getElementById('ready-players-count');
+    const totalPlayersCount = document.getElementById('total-players-count');
+    const teamReadyBtn = document.getElementById('team-ready-btn');
+
+    // Clear team displays
+    blueTeamPlayers.innerHTML = '';
+    redTeamPlayers.innerHTML = '';
+
+    let bluePlayers = [];
+    let redPlayers = [];
+
+    // Sort players into teams
+    allPlayers.forEach(player => {
+        if (player.team === 'blue') {
+            bluePlayers.push(player);
+        } else if (player.team === 'red') {
+            redPlayers.push(player);
+        }
+    });
+
+    // Display blue team players
+    bluePlayers.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'team-player-item';
+        
+        const isReady = teamReadyPlayers.has(player.id);
+        const readyIndicator = isReady ? 
+            '<span class="player-ready-indicator">Ready</span>' : 
+            '<span class="player-not-ready-indicator">Not Ready</span>';
+        
+        playerElement.innerHTML = `
+            <span>${player.name}</span>
+            ${readyIndicator}
+        `;
+        blueTeamPlayers.appendChild(playerElement);
+    });
+
+    // Display red team players
+    redPlayers.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'team-player-item';
+        
+        const isReady = teamReadyPlayers.has(player.id);
+        const readyIndicator = isReady ? 
+            '<span class="player-ready-indicator">Ready</span>' : 
+            '<span class="player-not-ready-indicator">Not Ready</span>';
+        
+        playerElement.innerHTML = `
+            <span>${player.name}</span>
+            ${readyIndicator}
+        `;
+        redTeamPlayers.appendChild(playerElement);
+    });
+
+    // Update counts
+    blueTeamCount.textContent = `${bluePlayers.length} hráčov`;
+    redTeamCount.textContent = `${redPlayers.length} hráčov`;
+    readyPlayersCount.textContent = teamReadyPlayers.size;
+    totalPlayersCount.textContent = allPlayers.length;
+
+    // Update ready button state
+    const currentPlayerReady = teamReadyPlayers.has(socket.id);
+    teamReadyBtn.textContent = currentPlayerReady ? 'Zrušiť ready' : 'Som pripravený!';
+    
+    // In combined-selection phase, keep button enabled even without team
+    if (currentPhase === 'combined-selection') {
+        teamReadyBtn.disabled = false;
+    } else {
+        teamReadyBtn.disabled = !playerTeam;
+    }
+}
+
+function updateJoinButtonsState() {
+    const joinButtons = document.querySelectorAll('.join-team-btn');
+    
+    joinButtons.forEach(btn => {
+        const btnTeam = btn.dataset.team;
+        if (playerTeam === btnTeam) {
+            btn.textContent = `V ${btnTeam === 'blue' ? 'modrom' : 'červenom'} tíme`;
+            btn.disabled = true;
+        } else {
+            btn.textContent = `Pridať sa k ${btnTeam === 'blue' ? 'modrému' : 'červenému'} tímu`;
+            btn.disabled = false;
+        }
     });
 }
 
@@ -6027,6 +7068,176 @@ function reinitializeCharacterSelection() {
 // Initialize multiplayer mode selection when page loads
 document.addEventListener('DOMContentLoaded', () => {
     initMultiplayerModeSelection();
+    initTeamSelectionListeners();
+    initLobbySelectionListeners();
 });
+
+function initLobbySelectionListeners() {
+    // Character selection in lobby
+    const lobbyCharacterCards = document.querySelectorAll('#lobby-character-cards .lobby-character-card');
+    lobbyCharacterCards.forEach(card => {
+        card.addEventListener('click', () => {
+            const characterId = card.dataset.character;
+            selectLobbyCharacter(characterId);
+        });
+    });
+    
+    // Tank selection in lobby  
+    const lobbyTankCards = document.querySelectorAll('#lobby-tank-cards .lobby-tank-card');
+    lobbyTankCards.forEach(card => {
+        card.addEventListener('click', () => {
+            const tankId = card.dataset.tank;
+            selectLobbyTank(tankId);
+        });
+    });
+    
+    // Map selection in lobby - use event delegation to catch dynamically added elements
+    const lobbyMapCardsContainer = document.getElementById('lobby-map-cards');
+    if (lobbyMapCardsContainer) {
+        lobbyMapCardsContainer.addEventListener('click', (event) => {
+            const mapCard = event.target.closest('.lobby-map-card');
+            if (mapCard) {
+                const mapId = mapCard.dataset.map;
+                console.log('Map clicked:', mapId); // Debug log
+                selectLobbyMap(mapId);
+            }
+        });
+    }
+    
+    // All vs All ready button
+    const allVsAllReadyBtn = document.getElementById('all-vs-all-ready-btn');
+    if (allVsAllReadyBtn) {
+        allVsAllReadyBtn.addEventListener('click', () => {
+            toggleAllVsAllReady();
+        });
+    }
+}
+
+function initTeamSelectionListeners() {
+    // Join team buttons
+    const joinTeamButtons = document.querySelectorAll('.join-team-btn');
+    joinTeamButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const team = btn.dataset.team;
+            joinTeam(team);
+        });
+    });
+    
+    // Ready button
+    const teamReadyBtn = document.getElementById('team-ready-btn');
+    if (teamReadyBtn) {
+        teamReadyBtn.addEventListener('click', () => {
+            togglePlayerReady();
+        });
+    }
+
+    // Game ready button (for combined selection final game start)
+    const gameReadyBtn = document.getElementById('game-ready-btn');
+    if (gameReadyBtn) {
+        gameReadyBtn.addEventListener('click', () => {
+            toggleGameReady();
+        });
+    }
+
+    // Team name inputs (only for team captains)
+    const blueTeamNameInput = document.getElementById('blue-team-name');
+    const redTeamNameInput = document.getElementById('red-team-name');
+
+    if (blueTeamNameInput && redTeamNameInput) {
+        blueTeamNameInput.addEventListener('input', (e) => {
+            const isCaptain = teamCaptains.blue === socket.id;
+            if (playerTeam === 'blue' && isCaptain) {
+                socket.emit('update-team-name', { team: 'blue', name: e.target.value });
+            }
+        });
+
+        blueTeamNameInput.addEventListener('focus', (e) => {
+            const isCaptain = teamCaptains.blue === socket.id;
+            if (playerTeam !== 'blue' || !isCaptain) {
+                e.target.blur(); // Remove focus if not captain
+            }
+        });
+
+        redTeamNameInput.addEventListener('input', (e) => {
+            const isCaptain = teamCaptains.red === socket.id;
+            if (playerTeam === 'red' && isCaptain) {
+                socket.emit('update-team-name', { team: 'red', name: e.target.value });
+            }
+        });
+
+        redTeamNameInput.addEventListener('focus', (e) => {
+            const isCaptain = teamCaptains.red === socket.id;
+            if (playerTeam !== 'red' || !isCaptain) {
+                e.target.blur(); // Remove focus if not captain
+            }
+        });
+
+        // Make team name inputs more interactive - click anywhere to focus if captain
+        const blueTeamHeader = blueTeamNameInput.closest('.team-header');
+        const redTeamHeader = redTeamNameInput.closest('.team-header');
+
+        if (blueTeamHeader) {
+            blueTeamHeader.addEventListener('click', () => {
+                const isCaptain = teamCaptains.blue === socket.id;
+                if (playerTeam === 'blue' && isCaptain) {
+                    blueTeamNameInput.focus();
+                }
+            });
+        }
+
+        if (redTeamHeader) {
+            redTeamHeader.addEventListener('click', () => {
+                const isCaptain = teamCaptains.red === socket.id;
+                if (playerTeam === 'red' && isCaptain) {
+                    redTeamNameInput.focus();
+                }
+            });
+        }
+
+        // Update team input states when captain status changes
+        updateTeamInputStates();
+    }
+    
+    // Host start selection button
+    const hostStartSelectionBtn = document.getElementById('host-start-selection-btn');
+    if (hostStartSelectionBtn) {
+        hostStartSelectionBtn.addEventListener('click', () => {
+            if (socket && currentRoom && selectedGameMode === 'team-vs-team') {
+                socket.emit('host-start-selection');
+            }
+        });
+    }
+    
+    // Host start game button  
+    const hostStartGameBtn = document.getElementById('host-start-game-btn');
+    if (hostStartGameBtn) {
+        hostStartGameBtn.addEventListener('click', () => {
+            if (socket && currentRoom) {
+                socket.emit('host-start-game');
+            }
+        });
+    }
+    
+    // Host lock room button
+    const hostLockRoomBtn = document.getElementById('host-lock-room-btn-main');
+    if (hostLockRoomBtn) {
+        hostLockRoomBtn.addEventListener('click', () => {
+            console.log('Host clicked lock room button');
+            if (socket && currentRoom) {
+                const isCurrentlyLocked = hostLockRoomBtn.textContent.includes('Odomknúť');
+                
+                if (isCurrentlyLocked) {
+                    // Room is locked, unlock it
+                    socket.emit('unlock-room', { roomId: currentRoom });
+                    console.log('Unlocking room:', currentRoom);
+                } else {
+                    // Room is unlocked, lock it
+                    socket.emit('lock-room', { roomId: currentRoom });
+                    console.log('Locking room:', currentRoom);
+                }
+            }
+        });
+    }
+}
 
 init();
