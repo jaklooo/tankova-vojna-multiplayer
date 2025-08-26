@@ -3,6 +3,10 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 
+const { GAME_MODES, getGameModeName, getGameModeDescription } = require('./src/config/gameModes');
+const GameRoom = require('./src/models/GameRoom');
+const { generatePlayerSpawnPositions } = require('./src/utils/spawnPositions');
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
@@ -18,84 +22,6 @@ app.use(express.static(path.join(__dirname)));
 // Game state
 let gameRooms = new Map();
 let waitingPlayers = [];
-
-// Game modes configuration
-const GAME_MODES = {
-    'all-vs-all': { maxPlayers: 16, minPlayers: 2, teamMode: false, hostCanStart: true },
-    'team-vs-team': { maxPlayers: 16, minPlayers: 2, teamMode: true, hostCanStart: true }
-};
-
-// Room structure
-class GameRoom {
-    constructor(id, gameMode = 'all-vs-all') {
-        this.id = id;
-        this.players = [];
-        this.gameMode = gameMode;
-        this.maxPlayers = GAME_MODES[gameMode].maxPlayers;
-        this.minPlayers = GAME_MODES[gameMode].minPlayers || GAME_MODES[gameMode].maxPlayers;
-        this.teamMode = GAME_MODES[gameMode].teamMode;
-        this.hostCanStart = GAME_MODES[gameMode].hostCanStart || false;
-        this.gameState = 'waiting'; // waiting, selecting, playing, ended
-        this.currentPhase = 'team-selection'; // team-selection, character-selection, tank-selection, map-selection
-        this.gameData = null;
-        this.selectionPhase = false; // Host can start selection phase in team mode
-        this.selectedMap = null; // Selected map by host
-        this.hostId = null; // First player becomes host
-        this.teams = { blue: [], red: [] }; // For team-based modes
-        this.teamNames = { blue: 'Modrý tím', red: 'Červený tím' }; // Default team names
-        this.teamCaptains = { blue: null, red: null }; // First player in each team becomes captain
-        this.mapVotes = {}; // Map voting for all-vs-all mode
-        this.readyPlayers = new Set(); // Ready players for all-vs-all mode
-        this.gameReadyPlayers = new Set(); // Players ready for final game start in combined selection
-        this.locked = false; // Host can lock room to prevent new players
-    }
-
-    addPlayer(player) {
-        if (this.players.length < this.maxPlayers) {
-            // First player becomes host
-            if (this.players.length === 0) {
-                this.hostId = player.id;
-                player.isHost = true;
-            }
-            
-            // For team mode, players join teams manually
-            // For all-vs-all mode, no team assignment
-            player.team = null;
-            
-            this.players.push(player);
-            return true;
-        }
-        return false;
-    }
-
-    removePlayer(playerId) {
-        const removedPlayer = this.players.find(p => p.id === playerId);
-        this.players = this.players.filter(p => p.id !== playerId);
-        
-        // Remove from teams if team mode
-        if (this.teamMode && removedPlayer) {
-            if (removedPlayer.team === 'blue') {
-                this.teams.blue = this.teams.blue.filter(id => id !== playerId);
-            } else if (removedPlayer.team === 'red') {
-                this.teams.red = this.teams.red.filter(id => id !== playerId);
-            }
-        }
-        
-        // If host leaves, assign new host
-        if (this.hostId === playerId && this.players.length > 0) {
-            this.hostId = this.players[0].id;
-            this.players[0].isHost = true;
-        }
-    }
-
-    isFull() {
-        return this.players.length >= this.maxPlayers;
-    }
-
-    isEmpty() {
-        return this.players.length === 0;
-    }
-}
 
 // Socket connection handling
 io.on('connection', (socket) => {
@@ -1114,104 +1040,6 @@ function generateObstacles(mapId, arenaWidth, arenaHeight) {
     return obstacles;
 }
 
-function generatePlayerSpawnPositions(players, arenaWidth, arenaHeight, obstacles) {
-    const positions = {};
-    const playerCount = players.length;
-    
-    // Define spawn positions based on number of players
-    if (playerCount === 2) {
-        // 1v1 - opposite corners with better separation
-        positions[players[0].id] = {
-            x: 200,
-            y: arenaHeight - 200,
-            tankType: players[0].selectedTank || 'purple',
-            character: players[0].selectedCharacter || 'jaccelini'
-        };
-        positions[players[1].id] = {
-            x: arenaWidth - 200,
-            y: 200,
-            tankType: players[1].selectedTank || 'purple',
-            character: players[1].selectedCharacter || 'jaccelini'
-        };
-    } else if (playerCount === 3) {
-        // Free-for-all 3 - triangle formation
-        const centerX = arenaWidth / 2;
-        const centerY = arenaHeight / 2;
-        const radius = Math.min(arenaWidth, arenaHeight) * 0.3;
-        
-        for (let i = 0; i < 3; i++) {
-            const angle = (i * 2 * Math.PI) / 3;
-            positions[players[i].id] = {
-                x: centerX + Math.cos(angle) * radius,
-                y: centerY + Math.sin(angle) * radius,
-                tankType: players[i].selectedTank || 'purple',
-                character: players[i].selectedCharacter || 'jaccelini'
-            };
-        }
-    } else if (playerCount === 4) {
-        // 2v2 or free-for-all 4 - four corners
-        const margin = 200;
-        const spawnPoints = [
-            { x: margin, y: margin },
-            { x: arenaWidth - margin, y: margin },
-            { x: arenaWidth - margin, y: arenaHeight - margin },
-            { x: margin, y: arenaHeight - margin }
-        ];
-        
-        for (let i = 0; i < 4; i++) {
-            positions[players[i].id] = {
-                x: spawnPoints[i].x,
-                y: spawnPoints[i].y,
-                tankType: players[i].selectedTank || 'purple',
-                character: players[i].selectedCharacter || 'jaccelini'
-            };
-        }
-    } else if (playerCount === 6) {
-        // 3v3 or free-for-all 6 - hexagon formation
-        const centerX = arenaWidth / 2;
-        const centerY = arenaHeight / 2;
-        const radius = Math.min(arenaWidth, arenaHeight) * 0.35;
-        
-        for (let i = 0; i < 6; i++) {
-            const angle = (i * 2 * Math.PI) / 6;
-            positions[players[i].id] = {
-                x: centerX + Math.cos(angle) * radius,
-                y: centerY + Math.sin(angle) * radius,
-                tankType: players[i].selectedTank || 'purple',
-                character: players[i].selectedCharacter || 'jaccelini'
-            };
-        }
-    } else {
-        // Unlimited mode or larger groups - circular formation
-        const centerX = arenaWidth / 2;
-        const centerY = arenaHeight / 2;
-        const baseRadius = Math.min(arenaWidth, arenaHeight) * 0.25;
-        
-        // For more than 8 players, create multiple rings
-        const playersPerRing = Math.min(8, playerCount);
-        const numRings = Math.ceil(playerCount / playersPerRing);
-        
-        let playerIndex = 0;
-        for (let ring = 0; ring < numRings && playerIndex < playerCount; ring++) {
-            const ringRadius = baseRadius + (ring * 150); // Each ring 150px further
-            const playersInThisRing = Math.min(playersPerRing, playerCount - playerIndex);
-            
-            for (let i = 0; i < playersInThisRing; i++) {
-                const angle = (i * 2 * Math.PI) / playersInThisRing;
-                positions[players[playerIndex].id] = {
-                    x: centerX + Math.cos(angle) * ringRadius,
-                    y: centerY + Math.sin(angle) * ringRadius,
-                    tankType: players[playerIndex].selectedTank || 'purple',
-                    character: players[playerIndex].selectedCharacter || 'jaccelini'
-                };
-                playerIndex++;
-            }
-        }
-    }
-    
-    return positions;
-}
-
 // API endpoint to get available game modes
 app.get('/api/game-modes', (req, res) => {
     const modes = Object.keys(GAME_MODES).map(mode => ({
@@ -1224,22 +1052,6 @@ app.get('/api/game-modes', (req, res) => {
     
     res.json({ gameModes: modes });
 });
-
-function getGameModeName(mode) {
-    const names = {
-        'all-vs-all': 'All vs. All (Každý proti každému)',
-        'team-vs-team': 'Team vs. Team (Tímový súboj)'
-    };
-    return names[mode] || mode;
-}
-
-function getGameModeDescription(mode) {
-    const descriptions = {
-        'all-vs-all': 'Každý proti každému - bez tímov (2-16 hráčov)',
-        'team-vs-team': 'Tímový súboj - vytvor si svoj tím (2-16 hráčov)'
-    };
-    return descriptions[mode] || 'Popis nie je dostupný';
-}
 
 // Debug endpoint for file diagnostics
 app.get('/debug/files', (req, res) => {
