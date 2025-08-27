@@ -1,4 +1,5 @@
 const { GAME_MODES } = require('../config/gameModes');
+const GameStateManager = require('../managers/GameStateManager');
 
 class GameRoom {
     constructor(id, gameMode = 'all-vs-all') {
@@ -32,6 +33,9 @@ class GameRoom {
         this.matchEnded = false;
         this.alivePlayers = new Set(); // Track alive players
         this.spectators = new Set(); // Track spectating players
+        
+        // Initialize game state manager
+        this.stateManager = new GameStateManager();
     }
 
     addPlayer(player) {
@@ -107,71 +111,26 @@ class GameRoom {
     }
 
     checkGameEnd() {
-        if (this.gameState !== 'playing') return null;
-        
-        if (this.teamMode) {
-            // Team vs team: check if one team has no alive players
-            const blueAlive = this.teams.blue.filter(id => this.alivePlayers.has(id));
-            const redAlive = this.teams.red.filter(id => this.alivePlayers.has(id));
-            
-            if (blueAlive.length === 0 && redAlive.length > 0) {
-                return { winner: 'red', gameEnd: true };
-            } else if (redAlive.length === 0 && blueAlive.length > 0) {
-                return { winner: 'blue', gameEnd: true };
-            }
-        } else {
-            // All vs all: check if only one player is alive
-            if (this.alivePlayers.size <= 1) {
-                const winnerId = this.alivePlayers.size === 1 ? 
-                    Array.from(this.alivePlayers)[0] : null;
-                return { winner: winnerId, gameEnd: true };
-            }
-        }
-        
-        return null;
+        return this.stateManager.checkEndCondition(this);
     }
 
     handleRoundWin(winner) {
-        if (!this.teamMode) return { matchEnd: true };
-        
-        this.roundWinners.push(winner);
-        this.roundScores[winner]++;
-        this.currentRound++;
-        
-        // Check if match is over (best of 3)
-        const matchEnd = this.roundScores[winner] >= Math.ceil(this.maxRounds / 2);
-        
-        return { matchEnd, winner };
+        const endResult = { winner, gameEnd: true };
+        return this.stateManager.handleRoundEnd(this, endResult);
     }
 
     getTeamEndData() {
-        return {
-            matchWinner: this.roundScores.blue > this.roundScores.red ? 'blue' : 'red',
-            scores: this.roundScores,
-            teams: {
-                blue: this.players.filter(p => p.team === 'blue'),
-                red: this.players.filter(p => p.team === 'red')
-            },
-            rounds: this.roundWinners
-        };
+        const endResult = { winner: null, gameEnd: true };
+        const roundResult = { isMatchEnd: true };
+        return this.stateManager.getEndGameData(this, endResult, roundResult);
     }
 
     getAllVsAllEndData() {
-        const ranking = this.players.map(player => {
-            const elimination = this.eliminationOrder.find(e => e.playerId === player.id);
-            return {
-                name: player.name,
-                playerId: player.id,
-                eliminationOrder: elimination ? elimination.eliminationOrder : 0
-            };
-        }).sort((a, b) => {
-            // Winner (not eliminated) first, then by elimination order
-            if (a.eliminationOrder === 0) return -1;
-            if (b.eliminationOrder === 0) return 1;
-            return a.eliminationOrder - b.eliminationOrder;
-        });
-
-        return { ranking };
+        const endResult = { 
+            winner: this.alivePlayers.size === 1 ? Array.from(this.alivePlayers)[0] : null,
+            gameEnd: true 
+        };
+        return this.stateManager.getEndGameData(this, endResult);
     }
 
     resetForNextRound() {

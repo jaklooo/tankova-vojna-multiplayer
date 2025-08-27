@@ -5,6 +5,7 @@ const path = require('path');
 
 const { GAME_MODES, getGameModeName, getGameModeDescription } = require('./src/config/gameModes');
 const GameRoom = require('./src/models/GameRoom');
+const GameStateManager = require('./src/managers/GameStateManager');
 const { generatePlayerSpawnPositions } = require('./src/utils/spawnPositions');
 
 const app = express();
@@ -15,6 +16,9 @@ const io = socketIo(server, {
         methods: ["GET", "POST"]
     }
 });
+
+// Initialize global game state manager
+const globalStateManager = new GameStateManager();
 
 // Serve static files
 app.use(express.static(path.join(__dirname)));
@@ -1181,43 +1185,53 @@ app.get('/debug/files', (req, res) => {
 // --- END GAME HELPER FUNCTIONS ---
 
 function handleGameEnd(room, result) {
+    const endResult = globalStateManager.checkEndCondition(room);
+    
+    if (!endResult || !endResult.shouldEnd) {
+        console.warn('HandleGameEnd called but no valid end condition found');
+        return;
+    }
+    
     if (room.teamMode) {
-        handleTeamGameEnd(room, result);
+        handleTeamGameEnd(room, endResult);
     } else {
-        handleAllVsAllEnd(room, result);
+        handleAllVsAllEnd(room, endResult);
     }
 }
 
-function handleTeamGameEnd(room, result) {
-    const roundResult = room.handleRoundWin(result.winner);
+function handleTeamGameEnd(room, endResult) {
+    const roundResult = globalStateManager.handleRoundEnd(room, endResult);
+    const endData = globalStateManager.getEndGameData(room, endResult, roundResult);
     
-    // Emit round end event
+    // Emit round end event with comprehensive data
     io.to(room.id).emit('team-round-end', {
-        round: room.currentRound - 1,
-        winnerTeam: result.winner,
-        scores: room.roundScores,
-        roundEnd: true
+        round: roundResult.round,
+        winnerTeam: endResult.winner,
+        scores: roundResult.currentScore,
+        roundEnd: true,
+        endCondition: endResult.condition,
+        matchEnd: roundResult.isMatchEnd
     });
 
-    if (roundResult.matchEnd) {
+    if (roundResult.isMatchEnd) {
         // Match is over
-        const endData = room.getTeamEndData();
-        room.gameState = 'ended';
+        room.gameState = globalStateManager.gameStates.ENDED;
         
         setTimeout(() => {
             io.to(room.id).emit('team-match-end', endData);
         }, 3000); // Wait 3 seconds before showing end screen
     } else {
         // Start next round
+        room.gameState = globalStateManager.gameStates.ROUND_END;
         setTimeout(() => {
             startNextRound(room);
         }, 5000); // Wait 5 seconds before next round
     }
 }
 
-function handleAllVsAllEnd(room, result) {
-    const endData = room.getAllVsAllEndData();
-    room.gameState = 'ended';
+function handleAllVsAllEnd(room, endResult) {
+    const endData = globalStateManager.getEndGameData(room, endResult);
+    room.gameState = globalStateManager.gameStates.ENDED;
     
     setTimeout(() => {
         io.to(room.id).emit('all-vs-all-end', endData);
@@ -1225,8 +1239,15 @@ function handleAllVsAllEnd(room, result) {
 }
 
 function startNextRound(room) {
+    // Validate state transition
+    if (!globalStateManager.canTransitionTo(room.gameState, globalStateManager.gameStates.PLAYING)) {
+        console.error('Invalid state transition for next round');
+        return;
+    }
+    
     // Reset for next round
     room.resetForNextRound();
+    room.gameState = globalStateManager.gameStates.PLAYING;
     
     // Notify players that next round is starting
     io.to(room.id).emit('next-round-starting', {

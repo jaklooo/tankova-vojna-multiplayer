@@ -32,6 +32,19 @@ const MAX_TRACKS_MULTIPLAYER = 20; // Limit tank tracks in multiplayer
 const VIEWPORT_CULLING_MARGIN = 300; // Extra margin for viewport culling (increased for multiplayer)
 let lastFrameTime = 0;
 
+// Initialize performance and networking managers
+let performanceManager = null;
+let networkManager = null;
+
+function initializeManagers() {
+    if (typeof MultiplayerPerformanceManager !== 'undefined') {
+        performanceManager = new MultiplayerPerformanceManager();
+    }
+    if (typeof NetworkingManager !== 'undefined') {
+        networkManager = new NetworkingManager();
+    }
+}
+
 // Initialize multiplayer connection
 function initMultiplayer(gameMode = 'all-vs-all') {
     if (socket && socket.connected) {
@@ -4274,10 +4287,11 @@ function stopGame() {
 function gameLoop() {
     if (isPaused) return;
     
-    // FPS limiting for multiplayer performance (50 FPS)
-    if (isMultiplayer) {
-        const now = performance.now();
-        const deltaTime = now - lastFrameTime;
+    const frameStartTime = performance.now();
+    
+    // FPS limiting for multiplayer performance with dynamic adjustment
+    if (isMultiplayer && performanceManager) {
+        const deltaTime = frameStartTime - lastFrameTime;
         
         if (deltaTime < MULTIPLAYER_FRAME_TIME) {
             // Skip this frame if not enough time has passed
@@ -4286,12 +4300,24 @@ function gameLoop() {
             }
             return;
         }
-        lastFrameTime = now;
+        lastFrameTime = frameStartTime;
     }
     
     update();
     draw();
     drawMinimap(); // Draw minimap in each frame
+    
+    // Update performance metrics
+    if (performanceManager) {
+        const frameTime = performance.now() - frameStartTime;
+        performanceManager.updateMetrics(frameTime);
+        
+        // Periodically adjust performance settings
+        if (Math.random() < 0.01) { // 1% chance per frame
+            performanceManager.adjustPerformanceSettings();
+        }
+    }
+    
     if (!gameState.roundOver) {
         gameState.animationFrameId = requestAnimationFrame(gameLoop);
     }
@@ -4375,24 +4401,44 @@ function update() {
         
         // Send position update to other players (multiplayer) with throttling
         const now = Date.now();
-        if (isMultiplayer && socket && now - lastNetworkSync > NETWORK_SYNC_INTERVAL && (
-            Math.abs(gameState.player.x - oldX) > 1 || 
-            Math.abs(gameState.player.y - oldY) > 1 || 
-            Math.abs(gameState.player.angle - oldAngle) > 0.01 ||
-            Math.abs(gameState.player.turretAbsoluteAngle - oldTurretAngle) > 0.01
-        )) {
-            lastNetworkSync = now;
-            const positionData = {
-                x: gameState.player.x,
-                y: gameState.player.y,
-                angle: gameState.player.angle,
-                turretAngle: gameState.player.turretAbsoluteAngle
-            };
-            // Only log occasionally to avoid spam
-            if (Math.random() < 0.01) {
-                console.log('Sending position update:', positionData);
+        const currentPosition = {
+            x: gameState.player.x,
+            y: gameState.player.y,
+            angle: gameState.player.angle,
+            turretAngle: gameState.player.turretAbsoluteAngle
+        };
+        const lastPosition = {
+            x: oldX,
+            y: oldY,
+            angle: oldAngle,
+            turretAngle: oldTurretAngle
+        };
+        
+        // Use performance manager if available for smarter throttling
+        const shouldSend = performanceManager ? 
+            performanceManager.shouldSendPositionUpdate(socket?.id, currentPosition, lastPosition, now) :
+            (now - lastNetworkSync > NETWORK_SYNC_INTERVAL && (
+                Math.abs(gameState.player.x - oldX) > 1 || 
+                Math.abs(gameState.player.y - oldY) > 1 || 
+                Math.abs(gameState.player.angle - oldAngle) > 0.01 ||
+                Math.abs(gameState.player.turretAbsoluteAngle - oldTurretAngle) > 0.01
+            ));
+        
+        if (isMultiplayer && socket && shouldSend) {
+            if (!performanceManager) {
+                lastNetworkSync = now;
             }
-            socket.emit('player-position', positionData);
+            
+            // Use network manager if available
+            if (networkManager) {
+                networkManager.sendPositionUpdate(currentPosition);
+            } else {
+                // Only log occasionally to avoid spam
+                if (Math.random() < 0.01) {
+                    console.log('Sending position update:', currentPosition);
+                }
+                socket.emit('player-position', currentPosition);
+            }
         }
     } else if (gameState.isSpectating) { // New: Spectator camera movement
         let moveX = 0;
@@ -4476,26 +4522,43 @@ function update() {
     // Bullet movement
     gameState.bullets.forEach(b => b.move());
 
-    // Update particles
+    // Update particles with performance optimization
     gameState.particles.forEach(p => p.update());
-    gameState.particles = gameState.particles.filter(p => p.life > 0);
-    
-    // Limit particles in multiplayer for performance
-    if (isMultiplayer && gameState.particles.length > MAX_PARTICLES_MULTIPLAYER) {
-        gameState.particles = gameState.particles.slice(-MAX_PARTICLES_MULTIPLAYER);
+    if (performanceManager && isMultiplayer) {
+        gameState.particles = performanceManager.optimizeParticles(gameState.particles);
+    } else {
+        gameState.particles = gameState.particles.filter(p => p.life > 0);
+        
+        // Fallback limit for non-manager case
+        if (isMultiplayer && gameState.particles.length > MAX_PARTICLES_MULTIPLAYER) {
+            gameState.particles = gameState.particles.slice(-MAX_PARTICLES_MULTIPLAYER);
+        }
     }
 
-    // Update shot effects
+    // Update shot effects with optimization
     gameState.shotEffects.forEach(s => s.update());
-    gameState.shotEffects = gameState.shotEffects.filter(s => s.life > 0 || s.smokeParticles.length > 0);
+    if (performanceManager && isMultiplayer) {
+        gameState.shotEffects = performanceManager.optimizeEffects(gameState.shotEffects);
+    } else {
+        gameState.shotEffects = gameState.shotEffects.filter(s => s.life > 0 || s.smokeParticles.length > 0);
+    }
 
     // Update hit effects
     gameState.hitEffects.forEach(h => h.update());
     gameState.hitEffects = gameState.hitEffects.filter(h => h.life > 0);
     
-    // Limit tracks in multiplayer for performance
-    if (isMultiplayer && gameState.tracks.length > MAX_TRACKS_MULTIPLAYER) {
-        gameState.tracks = gameState.tracks.slice(-MAX_TRACKS_MULTIPLAYER);
+    // Optimize tracks with performance manager
+    if (performanceManager && isMultiplayer) {
+        gameState.tracks = performanceManager.optimizeTracks(gameState.tracks);
+    } else {
+        // Fallback optimization
+        const trackLifetime = isMultiplayer ? 1000 : 2000; // 1s in multiplayer, 2s in singleplayer
+        gameState.tracks = gameState.tracks.filter(track => Date.now() - track.timestamp < trackLifetime);
+        
+        // Limit tracks count in multiplayer for better performance
+        if (isMultiplayer && gameState.tracks.length > MAX_TRACKS_MULTIPLAYER) {
+            gameState.tracks = gameState.tracks.slice(-MAX_TRACKS_MULTIPLAYER);
+        }
     }
 
     // Collisions
@@ -4506,15 +4569,6 @@ function update() {
         b.x > -100 && b.x < gameState.arenaWidth + 100 &&
         b.y > -100 && b.y < gameState.arenaHeight + 100
     );
-
-    // Remove old tracks (shorter lifetime in multiplayer)
-    const trackLifetime = isMultiplayer ? 1000 : 2000; // 1s in multiplayer, 2s in singleplayer
-    gameState.tracks = gameState.tracks.filter(track => Date.now() - track.timestamp < trackLifetime);
-    
-    // Limit tracks count in multiplayer for better performance
-    if (isMultiplayer && gameState.tracks.length > MAX_TRACKS_MULTIPLAYER) {
-        gameState.tracks = gameState.tracks.slice(-MAX_TRACKS_MULTIPLAYER);
-    }
 
     // Update pulsating team indicator effect
     gameState.teamIndicatorPulse = (gameState.teamIndicatorPulse + 0.05);
@@ -7083,6 +7137,9 @@ function reinitializeCharacterSelection() {
 
 // Initialize multiplayer mode selection when page loads
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize managers first
+    initializeManagers();
+    
     initMultiplayerModeSelection();
     initTeamSelectionListeners();
     initLobbySelectionListeners();
