@@ -120,6 +120,28 @@ function initMultiplayer(gameMode = 'all-vs-all') {
         }
     });
     
+    // Handle team ready notification
+    socket.on('teams-ready', (data) => {
+        console.log('Teams ready notification:', data);
+        if (data.canStart) {
+            // Show notification to host that game can be started
+            const hostStartBtn = document.getElementById('host-start-btn');
+            if (hostStartBtn) {
+                hostStartBtn.style.display = 'block';
+                hostStartBtn.textContent = 'Spustiť hru!';
+                hostStartBtn.disabled = false;
+            }
+            
+            // Show notification message
+            const notificationDiv = document.getElementById('team-notification');
+            if (notificationDiv) {
+                notificationDiv.textContent = data.message;
+                notificationDiv.style.display = 'block';
+                notificationDiv.style.color = '#4CAF50'; // Green for success
+            }
+        }
+    });
+    
     socket.on('room-locked', (data) => {
         // Update lock button text
         const hostLockBtn = document.getElementById('host-lock-room-btn-main');
@@ -675,12 +697,11 @@ function updateMapVotingDisplay(mapVotes) {
     socket.on('player-position', (data) => {
         const otherTank = multiplayerTanks.get(data.playerId);
         if (otherTank) {
-            // Only log occasionally to avoid spam
-            if (Math.random() < 0.01) {
-                console.log(`Receiving position update for player ${data.playerId}:`, {
-                    from: { x: otherTank.x, y: otherTank.y },
-                    to: { x: data.x, y: data.y },
-                    timestamp: data.timestamp
+            // Only log occasionally for debugging
+            if (Math.random() < 0.001) { // 0.1% chance
+                console.log(`📍 Position update for ${data.playerId}:`, {
+                    from: { x: Math.round(otherTank.x), y: Math.round(otherTank.y) },
+                    to: { x: data.x, y: data.y }
                 });
             }
             
@@ -700,7 +721,7 @@ function updateMapVotingDisplay(mapVotes) {
             otherTank.interpolationTime = 0;
             otherTank.lastUpdateTime = Date.now();
         } else {
-            console.warn(`No tank found for player ${data.playerId}`);
+            console.warn(`❌ No tank found for player ${data.playerId} - available tanks:`, Array.from(multiplayerTanks.keys()));
         }
     });
 
@@ -1644,8 +1665,11 @@ function startMultiplayerGame(data) {
     const myPlayerId = socket.id;
     const playerPositions = data.gameData.playerPositions || {};
     
-    console.log('Player positions from server:', playerPositions);
+    console.log('🚀 GAME START DEBUG:');
+    console.log('My socket ID:', socket.id);
     console.log('My player ID:', myPlayerId);
+    console.log('Player positions from server:', playerPositions);
+    console.log('All players:', data.players.map(p => ({ id: p.id, name: p.name })));
     
     // Clear existing tanks
     multiplayerTanks.clear();
@@ -1655,14 +1679,14 @@ function startMultiplayerGame(data) {
     data.players.forEach(playerData => {
         const position = playerPositions[playerData.id];
         if (!position) {
-            console.warn(`No position found for player ${playerData.id}`);
+            console.warn(`❌ No position found for player ${playerData.id}`);
             return;
         }
         
         const isMyPlayer = playerData.id === myPlayerId;
         const characterKey = position.character || playerData.selectedCharacter || 'jaccelini';
         
-        console.log(`Creating tank for player ${playerData.id}:`, {
+        console.log(`🔧 Creating tank for player ${playerData.id}:`, {
             isMyPlayer,
             position: { x: position.x, y: position.y },
             tankType: position.tankType,
@@ -1703,6 +1727,21 @@ function startMultiplayerGame(data) {
         
         multiplayerTanks.set(playerData.id, tank);
     });
+    
+    // Initialize camera to player position
+    if (gameState.player) {
+        gameState.cameraX = gameState.player.x + gameState.player.width / 2 - canvas.width / 2;
+        gameState.cameraY = gameState.player.y + gameState.player.height / 2 - canvas.height / 2;
+        
+        // Clamp camera to arena boundaries
+        gameState.cameraX = Math.max(0, Math.min(gameState.cameraX, gameState.arenaWidth - canvas.width));
+        gameState.cameraY = Math.max(0, Math.min(gameState.cameraY, gameState.arenaHeight - canvas.height));
+        
+        console.log(`🎥 Camera initialized to player position:`, {
+            playerPos: { x: gameState.player.x, y: gameState.player.y },
+            cameraPos: { x: gameState.cameraX, y: gameState.cameraY }
+        });
+    }
     
     // Start the game loop
     if(gameState.gameInterval) clearInterval(gameState.gameInterval);
@@ -2074,6 +2113,14 @@ const loadAssets = async () => {
 class Tank {
     constructor(x, y, type, isPlayer = false, isAlly = false, characterKey = null) {
         const spec = TANK_SPECS[type];
+        
+        // Debug log for spawn positions
+        if (isPlayer) {
+            console.log(`🔧 Creating PLAYER tank at:`, { x, y, type, characterKey });
+        } else {
+            console.log(`🔧 Creating OPPONENT tank at:`, { x, y, type, characterKey });
+        }
+        
         this.x = x;
         this.y = y;
         this.width = 50;
@@ -4492,16 +4539,18 @@ function update() {
                 lastNetworkSync = now;
             }
             
-            // Use network manager if available
-            if (networkManager) {
-                networkManager.sendPositionUpdate(currentPosition);
-            } else {
-                // Only log occasionally to avoid spam
-                if (Math.random() < 0.01) {
-                    console.log('Sending position update:', currentPosition);
-                }
-                socket.emit('player-position', currentPosition);
+            // For now, use direct socket instead of network manager
+            // to avoid conflicts with global socket instance
+            // TODO: Integrate NetworkingManager properly with global socket
+            
+            // Reduce logging to prevent spam
+            if (Math.random() < 0.001) { // 0.1% chance
+                console.log('📤 Sending position:', {
+                    x: Math.round(currentPosition.x), 
+                    y: Math.round(currentPosition.y)
+                });
             }
+            socket.emit('player-position', currentPosition);
         }
     } else if (gameState.isSpectating) { // New: Spectator camera movement
         let moveX = 0;

@@ -207,8 +207,29 @@ io.on('connection', (socket) => {
                 );
                 
                 if (allReady) {
-                    console.log(`Všetci hráči sú pripravení v miestnosti ${room.id}, spúšťam hru...`);
-                    startGame(room);
+                    console.log(`Všetci hráči sú pripravení v miestnosti ${room.id}`);
+                    
+                    // For team mode, need host to start manually after teams are set
+                    if (room.gameMode === 'team-vs-team') {
+                        // Check if teams are properly set up
+                        const teamAPlayers = room.players.filter(p => p.team === 'blue').length;
+                        const teamBPlayers = room.players.filter(p => p.team === 'red').length;
+                        
+                        if (teamAPlayers > 0 && teamBPlayers > 0) {
+                            console.log(`Team game ready - Blue: ${teamAPlayers}, Red: ${teamBPlayers}. Waiting for host to start.`);
+                            // Just notify that game can be started, don't auto-start
+                            io.to(room.id).emit('teams-ready', {
+                                message: 'All players ready! Host can start the game.',
+                                canStart: true
+                            });
+                        } else {
+                            console.log(`Teams not balanced - Blue: ${teamAPlayers}, Red: ${teamBPlayers}`);
+                        }
+                    } else {
+                        // All-vs-all mode can auto-start
+                        console.log(`All-vs-all game starting automatically...`);
+                        startGame(room);
+                    }
                 }
             }
         }
@@ -778,9 +799,12 @@ io.on('connection', (socket) => {
     socket.on('player-position', (positionData) => {
         const room = gameRooms.get(socket.currentRoom);
         if (room && room.gameState === 'playing') {
-            // Only log occasionally to avoid spam
-            if (Math.random() < 0.01) { // 1% chance to log
-                console.log(`Position update from ${socket.id}:`, positionData);
+            // Reduce logging to prevent spam
+            if (Math.random() < 0.001) { // 0.1% chance
+                console.log(`📍 Server: Position from ${socket.id}:`, {
+                    x: Math.round(positionData.x),
+                    y: Math.round(positionData.y)
+                });
             }
             
             // Broadcast position to all players in room except sender
@@ -1057,9 +1081,10 @@ function generateSharedGameData(room) {
     // Generate player spawn positions
     const playerPositions = generatePlayerSpawnPositions(room.players, arenaWidth, arenaHeight, obstacles);
     
+    console.log(`🎯 SPAWN DEBUG:`);
     console.log(`Arena size: ${arenaWidth}x${arenaHeight}`);
-    console.log('Generated player positions:', playerPositions);
-    console.log('Sending to players:', room.players.map(p => ({ id: p.id, name: p.name })));
+    console.log('Room players:', room.players.map(p => ({ id: p.id, name: p.name })));
+    console.log('Generated player positions:', JSON.stringify(playerPositions, null, 2));
     
     return {
         map: mapId,
