@@ -835,6 +835,86 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- END GAME EVENTS ---
+    
+    // Player elimination (when tank is destroyed)
+    socket.on('player-eliminated', (data) => {
+        const room = gameRooms.get(socket.currentRoom);
+        if (!room || room.gameState !== 'playing') return;
+
+        console.log('Player eliminated:', socket.id);
+        
+        // Check if player is already eliminated to prevent duplicates
+        if (room.spectators.has(socket.id)) {
+            return;
+        }
+        
+        // Mark player as eliminated
+        room.eliminatePlayer(socket.id);
+        
+        // Notify all players about elimination
+        io.to(room.id).emit('player-eliminated', {
+            playerId: socket.id,
+            playerName: data.playerName || 'Unknown'
+        });
+
+        // Check if round/game should end
+        const gameEndResult = room.checkGameEnd();
+        if (gameEndResult) {
+            handleGameEnd(room, gameEndResult);
+        }
+    });
+
+    // Back to lobby request
+    socket.on('back-to-lobby', () => {
+        const room = gameRooms.get(socket.currentRoom);
+        if (!room) return;
+
+        // Reset room state to waiting
+        room.gameState = 'waiting';
+        room.currentPhase = 'team-selection';
+        room.currentRound = 1;
+        room.roundScores = { blue: 0, red: 0 };
+        room.roundWinners = [];
+        room.matchEnded = false;
+        room.alivePlayers.clear();
+        room.spectators.clear();
+        room.eliminationOrder = [];
+
+        // Reset player states
+        room.players.forEach(player => {
+            player.ready = false;
+        });
+
+        // Notify all players to return to lobby
+        io.to(room.id).emit('back-to-lobby');
+    });
+
+    // Play again request
+    socket.on('play-again', () => {
+        const room = gameRooms.get(socket.currentRoom);
+        if (!room) return;
+
+        if (room.hostId !== socket.id) return; // Only host can start
+
+        // Reset game state for new match
+        room.gameState = 'waiting';
+        room.currentPhase = 'team-selection';
+        room.currentRound = 1;
+        room.roundScores = { blue: 0, red: 0 };
+        room.roundWinners = [];
+        room.matchEnded = false;
+        room.initializeGame();
+
+        // Reset player ready states
+        room.players.forEach(player => {
+            player.ready = false;
+        });
+
+        // Notify all players to start new game
+        io.to(room.id).emit('game-restart');
+    });
+
     // Handle disconnection
     socket.on('disconnect', () => {
         console.log('Hráč sa odpojil:', socket.id);
@@ -1097,6 +1177,81 @@ app.get('/debug/files', (req, res) => {
         });
     }
 });
+
+// --- END GAME HELPER FUNCTIONS ---
+
+function handleGameEnd(room, result) {
+    if (room.teamMode) {
+        handleTeamGameEnd(room, result);
+    } else {
+        handleAllVsAllEnd(room, result);
+    }
+}
+
+function handleTeamGameEnd(room, result) {
+    const roundResult = room.handleRoundWin(result.winner);
+    
+    // Emit round end event
+    io.to(room.id).emit('team-round-end', {
+        round: room.currentRound - 1,
+        winnerTeam: result.winner,
+        scores: room.roundScores,
+        roundEnd: true
+    });
+
+    if (roundResult.matchEnd) {
+        // Match is over
+        const endData = room.getTeamEndData();
+        room.gameState = 'ended';
+        
+        setTimeout(() => {
+            io.to(room.id).emit('team-match-end', endData);
+        }, 3000); // Wait 3 seconds before showing end screen
+    } else {
+        // Start next round
+        setTimeout(() => {
+            startNextRound(room);
+        }, 5000); // Wait 5 seconds before next round
+    }
+}
+
+function handleAllVsAllEnd(room, result) {
+    const endData = room.getAllVsAllEndData();
+    room.gameState = 'ended';
+    
+    setTimeout(() => {
+        io.to(room.id).emit('all-vs-all-end', endData);
+    }, 2000); // Wait 2 seconds before showing end screen
+}
+
+function startNextRound(room) {
+    // Reset for next round
+    room.resetForNextRound();
+    
+    // Notify players that next round is starting
+    io.to(room.id).emit('next-round-starting', {
+        round: room.currentRound,
+        countdown: 3
+    });
+
+    // Start countdown
+    let countdown = 3;
+    const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+            io.to(room.id).emit('next-round-starting', {
+                round: room.currentRound,
+                countdown: countdown
+            });
+        } else {
+            clearInterval(countdownInterval);
+            // Start the actual round
+            io.to(room.id).emit('round-start', {
+                round: room.currentRound
+            });
+        }
+    }, 1000);
+}
 
 // Start server
 const PORT = process.env.PORT || 3002;

@@ -22,6 +22,16 @@ class GameRoom {
         this.readyPlayers = new Set(); // Ready players for all-vs-all mode
         this.gameReadyPlayers = new Set(); // Players ready for final game start in combined selection
         this.locked = false; // Host can lock room to prevent new players
+        
+        // End game system properties
+        this.currentRound = 1;
+        this.maxRounds = 3; // Best-of-3 for team vs team
+        this.roundScores = { blue: 0, red: 0 }; // Team scores
+        this.eliminationOrder = []; // For all-vs-all ranking
+        this.roundWinners = []; // Track round winners for team mode
+        this.matchEnded = false;
+        this.alivePlayers = new Set(); // Track alive players
+        this.spectators = new Set(); // Track spectating players
     }
 
     addPlayer(player) {
@@ -68,6 +78,111 @@ class GameRoom {
 
     isEmpty() {
         return this.players.length === 0;
+    }
+
+    // --- END GAME METHODS ---
+    initializeGame() {
+        // Initialize game state for alive players
+        this.alivePlayers.clear();
+        this.spectators.clear();
+        this.eliminationOrder = [];
+        
+        this.players.forEach(player => {
+            this.alivePlayers.add(player.id);
+        });
+    }
+
+    eliminatePlayer(playerId) {
+        this.spectators.add(playerId);
+        this.alivePlayers.delete(playerId);
+        
+        // Add to elimination order for all-vs-all mode
+        if (!this.teamMode) {
+            this.eliminationOrder.push({
+                playerId: playerId,
+                eliminationTime: Date.now(),
+                eliminationOrder: this.eliminationOrder.length + 1
+            });
+        }
+    }
+
+    checkGameEnd() {
+        if (this.gameState !== 'playing') return null;
+        
+        if (this.teamMode) {
+            // Team vs team: check if one team has no alive players
+            const blueAlive = this.teams.blue.filter(id => this.alivePlayers.has(id));
+            const redAlive = this.teams.red.filter(id => this.alivePlayers.has(id));
+            
+            if (blueAlive.length === 0 && redAlive.length > 0) {
+                return { winner: 'red', gameEnd: true };
+            } else if (redAlive.length === 0 && blueAlive.length > 0) {
+                return { winner: 'blue', gameEnd: true };
+            }
+        } else {
+            // All vs all: check if only one player is alive
+            if (this.alivePlayers.size <= 1) {
+                const winnerId = this.alivePlayers.size === 1 ? 
+                    Array.from(this.alivePlayers)[0] : null;
+                return { winner: winnerId, gameEnd: true };
+            }
+        }
+        
+        return null;
+    }
+
+    handleRoundWin(winner) {
+        if (!this.teamMode) return { matchEnd: true };
+        
+        this.roundWinners.push(winner);
+        this.roundScores[winner]++;
+        this.currentRound++;
+        
+        // Check if match is over (best of 3)
+        const matchEnd = this.roundScores[winner] >= Math.ceil(this.maxRounds / 2);
+        
+        return { matchEnd, winner };
+    }
+
+    getTeamEndData() {
+        return {
+            matchWinner: this.roundScores.blue > this.roundScores.red ? 'blue' : 'red',
+            scores: this.roundScores,
+            teams: {
+                blue: this.players.filter(p => p.team === 'blue'),
+                red: this.players.filter(p => p.team === 'red')
+            },
+            rounds: this.roundWinners
+        };
+    }
+
+    getAllVsAllEndData() {
+        const ranking = this.players.map(player => {
+            const elimination = this.eliminationOrder.find(e => e.playerId === player.id);
+            return {
+                name: player.name,
+                playerId: player.id,
+                eliminationOrder: elimination ? elimination.eliminationOrder : 0
+            };
+        }).sort((a, b) => {
+            // Winner (not eliminated) first, then by elimination order
+            if (a.eliminationOrder === 0) return -1;
+            if (b.eliminationOrder === 0) return 1;
+            return a.eliminationOrder - b.eliminationOrder;
+        });
+
+        return { ranking };
+    }
+
+    resetForNextRound() {
+        // Reset alive players and spectators for next round
+        this.alivePlayers.clear();
+        this.spectators.clear();
+        
+        // Add all players back to alive
+        this.players.forEach(player => {
+            this.alivePlayers.add(player.id);
+        });
     }
 }
 
