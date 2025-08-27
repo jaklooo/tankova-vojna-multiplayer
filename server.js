@@ -844,28 +844,55 @@ io.on('connection', (socket) => {
     // Player elimination (when tank is destroyed)
     socket.on('player-eliminated', (data) => {
         const room = gameRooms.get(socket.currentRoom);
-        if (!room || room.gameState !== 'playing') return;
+        if (!room || room.gameState !== globalStateManager.gameStates.PLAYING) {
+            console.warn(`Player elimination ignored - invalid room state: ${room?.gameState}`);
+            return;
+        }
 
-        console.log('Player eliminated:', socket.id);
+        console.log('Player eliminated:', socket.id, 'Name:', data.playerName);
         
         // Check if player is already eliminated to prevent duplicates
         if (room.spectators.has(socket.id)) {
+            console.warn('Player already eliminated:', socket.id);
             return;
         }
         
-        // Mark player as eliminated
-        room.eliminatePlayer(socket.id);
+        // Validate player exists in room
+        const player = room.players.find(p => p.id === socket.id);
+        if (!player) {
+            console.error('Cannot eliminate player - not found in room:', socket.id);
+            return;
+        }
         
-        // Notify all players about elimination
-        io.to(room.id).emit('player-eliminated', {
-            playerId: socket.id,
-            playerName: data.playerName || 'Unknown'
-        });
+        try {
+            // Mark player as eliminated
+            room.eliminatePlayer(socket.id);
+            
+            // Notify all players about elimination with comprehensive data
+            io.to(room.id).emit('player-eliminated', {
+                playerId: socket.id,
+                playerName: data.playerName || player.name || 'Unknown',
+                team: player.team,
+                eliminationTime: Date.now(),
+                remainingPlayers: room.alivePlayers.size,
+                timestamp: data.timestamp || Date.now()
+            });
 
-        // Check if round/game should end
-        const gameEndResult = room.checkGameEnd();
-        if (gameEndResult) {
-            handleGameEnd(room, gameEndResult);
+            // Check if round/game should end using the state manager
+            const gameEndResult = globalStateManager.checkEndCondition(room);
+            if (gameEndResult && gameEndResult.shouldEnd) {
+                console.log('Game end condition met:', gameEndResult);
+                handleGameEnd(room, gameEndResult);
+            } else {
+                console.log(`Game continues - ${room.alivePlayers.size} players remaining`);
+            }
+        } catch (error) {
+            console.error('Error handling player elimination:', error);
+            // Send error to client
+            socket.emit('elimination-error', {
+                message: 'Failed to process elimination',
+                error: error.message
+            });
         }
     });
 
@@ -919,24 +946,72 @@ io.on('connection', (socket) => {
         io.to(room.id).emit('game-restart');
     });
 
-    // Handle disconnection
+    // Handle disconnection with improved game state management
     socket.on('disconnect', () => {
         console.log('Hráč sa odpojil:', socket.id);
         
         if (socket.currentRoom) {
             const room = gameRooms.get(socket.currentRoom);
             if (room) {
+                const disconnectedPlayer = room.players.find(p => p.id === socket.id);
+                const wasHost = room.hostId === socket.id;
+                const wasPlaying = room.gameState === globalStateManager.gameStates.PLAYING;
+                
+                // Handle mid-game disconnection
+                if (wasPlaying && room.alivePlayers.has(socket.id)) {
+                    console.log('Player disconnected during game, eliminating:', socket.id);
+                    
+                    // Eliminate the disconnected player
+                    room.eliminatePlayer(socket.id);
+                    
+                    // Notify remaining players about disconnection
+                    io.to(room.id).emit('player-disconnected', {
+                        playerId: socket.id,
+                        playerName: disconnectedPlayer?.name || 'Unknown',
+                        team: disconnectedPlayer?.team,
+                        timestamp: Date.now()
+                    });
+                    
+                    // Check if game should end due to disconnection
+                    const gameEndResult = globalStateManager.checkEndCondition(room);
+                    if (gameEndResult && gameEndResult.shouldEnd) {
+                        console.log('Game ending due to disconnection');
+                        handleGameEnd(room, gameEndResult);
+                    }
+                }
+                
+                // Remove player from room
                 room.removePlayer(socket.id);
                 
-                // Notify remaining players
+                // Handle host change
+                if (wasHost && room.players.length > 0) {
+                    console.log('Host disconnected, assigning new host:', room.hostId);
+                    io.to(room.id).emit('host-changed', {
+                        newHostId: room.hostId,
+                        newHostName: room.players.find(p => p.id === room.hostId)?.name
+                    });
+                }
+                
+                // Notify remaining players about player leaving
                 io.to(room.id).emit('player-left', {
                     playerId: socket.id,
-                    remainingPlayers: room.players
+                    playerName: disconnectedPlayer?.name || 'Unknown',
+                    remainingPlayers: room.players,
+                    newHostId: room.hostId
                 });
 
-                // Remove empty rooms
+                // Remove empty rooms or pause game if too few players
                 if (room.isEmpty()) {
+                    console.log('Room empty, deleting:', room.id);
                     gameRooms.delete(room.id);
+                } else if (wasPlaying && room.players.length < room.minPlayers) {
+                    console.log('Too few players remaining, pausing game');
+                    room.gameState = globalStateManager.gameStates.WAITING;
+                    io.to(room.id).emit('game-paused', {
+                        reason: 'Too few players remaining',
+                        minPlayers: room.minPlayers,
+                        currentPlayers: room.players.length
+                    });
                 }
             }
         }
