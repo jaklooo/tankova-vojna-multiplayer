@@ -32,6 +32,19 @@ const MAX_TRACKS_MULTIPLAYER = 20; // Limit tank tracks in multiplayer
 const VIEWPORT_CULLING_MARGIN = 300; // Extra margin for viewport culling (increased for multiplayer)
 let lastFrameTime = 0;
 
+// Initialize performance and networking managers
+let performanceManager = null;
+let networkManager = null;
+
+function initializeManagers() {
+    if (typeof MultiplayerPerformanceManager !== 'undefined') {
+        performanceManager = new MultiplayerPerformanceManager();
+    }
+    if (typeof NetworkingManager !== 'undefined') {
+        networkManager = new NetworkingManager();
+    }
+}
+
 // Initialize multiplayer connection
 function initMultiplayer(gameMode = 'all-vs-all') {
     if (socket && socket.connected) {
@@ -751,6 +764,69 @@ function updateMapVotingDisplay(mapVotes) {
             deadTank.health = 0;
             deadTank.explode();
         }
+    });
+    
+    // Handle player elimination
+    socket.on('player-eliminated', (data) => {
+        console.log('Player eliminated:', data);
+        
+        // Remove tank from game
+        if (multiplayerTanks.has(data.playerId)) {
+            multiplayerTanks.delete(data.playerId);
+        }
+        
+        // Show elimination message
+        showEliminationMessage(data);
+        
+        // Handle self elimination
+        if (data.playerId === socket.id) {
+            handleMultiplayerDeath(data.playerId, data.playerName);
+        }
+    });
+    
+    // Handle player disconnection during game
+    socket.on('player-disconnected', (data) => {
+        console.log('Player disconnected:', data);
+        
+        // Remove tank from game
+        if (multiplayerTanks.has(data.playerId)) {
+            multiplayerTanks.delete(data.playerId);
+        }
+        
+        // Show disconnection message
+        showDisconnectionMessage(data);
+    });
+    
+    // Handle host change
+    socket.on('host-changed', (data) => {
+        console.log('New host assigned:', data);
+        isHost = (data.newHostId === socket.id);
+        
+        // Update UI to reflect host status
+        updateHostUI();
+        
+        // Show host change notification
+        showNotification(`${data.newHostName} is now the host`, 'info');
+    });
+    
+    // Handle game pause due to too few players
+    socket.on('game-paused', (data) => {
+        console.log('Game paused:', data.reason);
+        gameState.roundOver = true;
+        
+        // Show pause message
+        showNotification(`Game paused: ${data.reason}`, 'warning');
+        
+        // Return to lobby
+        setTimeout(() => {
+            showScreen('lobby');
+        }, 3000);
+    });
+    
+    // Handle elimination errors
+    socket.on('elimination-error', (data) => {
+        console.error('Elimination error:', data);
+        showNotification(`Error: ${data.message}`, 'error');
     });
 }
 
@@ -4274,10 +4350,11 @@ function stopGame() {
 function gameLoop() {
     if (isPaused) return;
     
-    // FPS limiting for multiplayer performance (50 FPS)
-    if (isMultiplayer) {
-        const now = performance.now();
-        const deltaTime = now - lastFrameTime;
+    const frameStartTime = performance.now();
+    
+    // FPS limiting for multiplayer performance with dynamic adjustment
+    if (isMultiplayer && performanceManager) {
+        const deltaTime = frameStartTime - lastFrameTime;
         
         if (deltaTime < MULTIPLAYER_FRAME_TIME) {
             // Skip this frame if not enough time has passed
@@ -4286,12 +4363,24 @@ function gameLoop() {
             }
             return;
         }
-        lastFrameTime = now;
+        lastFrameTime = frameStartTime;
     }
     
     update();
     draw();
     drawMinimap(); // Draw minimap in each frame
+    
+    // Update performance metrics
+    if (performanceManager) {
+        const frameTime = performance.now() - frameStartTime;
+        performanceManager.updateMetrics(frameTime);
+        
+        // Periodically adjust performance settings
+        if (Math.random() < 0.01) { // 1% chance per frame
+            performanceManager.adjustPerformanceSettings();
+        }
+    }
+    
     if (!gameState.roundOver) {
         gameState.animationFrameId = requestAnimationFrame(gameLoop);
     }
@@ -4375,24 +4464,44 @@ function update() {
         
         // Send position update to other players (multiplayer) with throttling
         const now = Date.now();
-        if (isMultiplayer && socket && now - lastNetworkSync > NETWORK_SYNC_INTERVAL && (
-            Math.abs(gameState.player.x - oldX) > 1 || 
-            Math.abs(gameState.player.y - oldY) > 1 || 
-            Math.abs(gameState.player.angle - oldAngle) > 0.01 ||
-            Math.abs(gameState.player.turretAbsoluteAngle - oldTurretAngle) > 0.01
-        )) {
-            lastNetworkSync = now;
-            const positionData = {
-                x: gameState.player.x,
-                y: gameState.player.y,
-                angle: gameState.player.angle,
-                turretAngle: gameState.player.turretAbsoluteAngle
-            };
-            // Only log occasionally to avoid spam
-            if (Math.random() < 0.01) {
-                console.log('Sending position update:', positionData);
+        const currentPosition = {
+            x: gameState.player.x,
+            y: gameState.player.y,
+            angle: gameState.player.angle,
+            turretAngle: gameState.player.turretAbsoluteAngle
+        };
+        const lastPosition = {
+            x: oldX,
+            y: oldY,
+            angle: oldAngle,
+            turretAngle: oldTurretAngle
+        };
+        
+        // Use performance manager if available for smarter throttling
+        const shouldSend = performanceManager ? 
+            performanceManager.shouldSendPositionUpdate(socket?.id, currentPosition, lastPosition, now) :
+            (now - lastNetworkSync > NETWORK_SYNC_INTERVAL && (
+                Math.abs(gameState.player.x - oldX) > 1 || 
+                Math.abs(gameState.player.y - oldY) > 1 || 
+                Math.abs(gameState.player.angle - oldAngle) > 0.01 ||
+                Math.abs(gameState.player.turretAbsoluteAngle - oldTurretAngle) > 0.01
+            ));
+        
+        if (isMultiplayer && socket && shouldSend) {
+            if (!performanceManager) {
+                lastNetworkSync = now;
             }
-            socket.emit('player-position', positionData);
+            
+            // Use network manager if available
+            if (networkManager) {
+                networkManager.sendPositionUpdate(currentPosition);
+            } else {
+                // Only log occasionally to avoid spam
+                if (Math.random() < 0.01) {
+                    console.log('Sending position update:', currentPosition);
+                }
+                socket.emit('player-position', currentPosition);
+            }
         }
     } else if (gameState.isSpectating) { // New: Spectator camera movement
         let moveX = 0;
@@ -4476,26 +4585,43 @@ function update() {
     // Bullet movement
     gameState.bullets.forEach(b => b.move());
 
-    // Update particles
+    // Update particles with performance optimization
     gameState.particles.forEach(p => p.update());
-    gameState.particles = gameState.particles.filter(p => p.life > 0);
-    
-    // Limit particles in multiplayer for performance
-    if (isMultiplayer && gameState.particles.length > MAX_PARTICLES_MULTIPLAYER) {
-        gameState.particles = gameState.particles.slice(-MAX_PARTICLES_MULTIPLAYER);
+    if (performanceManager && isMultiplayer) {
+        gameState.particles = performanceManager.optimizeParticles(gameState.particles);
+    } else {
+        gameState.particles = gameState.particles.filter(p => p.life > 0);
+        
+        // Fallback limit for non-manager case
+        if (isMultiplayer && gameState.particles.length > MAX_PARTICLES_MULTIPLAYER) {
+            gameState.particles = gameState.particles.slice(-MAX_PARTICLES_MULTIPLAYER);
+        }
     }
 
-    // Update shot effects
+    // Update shot effects with optimization
     gameState.shotEffects.forEach(s => s.update());
-    gameState.shotEffects = gameState.shotEffects.filter(s => s.life > 0 || s.smokeParticles.length > 0);
+    if (performanceManager && isMultiplayer) {
+        gameState.shotEffects = performanceManager.optimizeEffects(gameState.shotEffects);
+    } else {
+        gameState.shotEffects = gameState.shotEffects.filter(s => s.life > 0 || s.smokeParticles.length > 0);
+    }
 
     // Update hit effects
     gameState.hitEffects.forEach(h => h.update());
     gameState.hitEffects = gameState.hitEffects.filter(h => h.life > 0);
     
-    // Limit tracks in multiplayer for performance
-    if (isMultiplayer && gameState.tracks.length > MAX_TRACKS_MULTIPLAYER) {
-        gameState.tracks = gameState.tracks.slice(-MAX_TRACKS_MULTIPLAYER);
+    // Optimize tracks with performance manager
+    if (performanceManager && isMultiplayer) {
+        gameState.tracks = performanceManager.optimizeTracks(gameState.tracks);
+    } else {
+        // Fallback optimization
+        const trackLifetime = isMultiplayer ? 1000 : 2000; // 1s in multiplayer, 2s in singleplayer
+        gameState.tracks = gameState.tracks.filter(track => Date.now() - track.timestamp < trackLifetime);
+        
+        // Limit tracks count in multiplayer for better performance
+        if (isMultiplayer && gameState.tracks.length > MAX_TRACKS_MULTIPLAYER) {
+            gameState.tracks = gameState.tracks.slice(-MAX_TRACKS_MULTIPLAYER);
+        }
     }
 
     // Collisions
@@ -4506,15 +4632,6 @@ function update() {
         b.x > -100 && b.x < gameState.arenaWidth + 100 &&
         b.y > -100 && b.y < gameState.arenaHeight + 100
     );
-
-    // Remove old tracks (shorter lifetime in multiplayer)
-    const trackLifetime = isMultiplayer ? 1000 : 2000; // 1s in multiplayer, 2s in singleplayer
-    gameState.tracks = gameState.tracks.filter(track => Date.now() - track.timestamp < trackLifetime);
-    
-    // Limit tracks count in multiplayer for better performance
-    if (isMultiplayer && gameState.tracks.length > MAX_TRACKS_MULTIPLAYER) {
-        gameState.tracks = gameState.tracks.slice(-MAX_TRACKS_MULTIPLAYER);
-    }
 
     // Update pulsating team indicator effect
     gameState.teamIndicatorPulse = (gameState.teamIndicatorPulse + 0.05);
@@ -5736,15 +5853,36 @@ function isInViewport(obj) {
     // Skip culling in single player or for player tank
     if (!isMultiplayer || obj.isPlayer) return true;
     
+    // Use performance manager if available for more sophisticated culling
+    if (performanceManager) {
+        const camera = {
+            x: gameState.cameraX,
+            y: gameState.cameraY
+        };
+        const canvasSize = {
+            width: canvas.width,
+            height: canvas.height
+        };
+        
+        // Use performance manager's viewport culling
+        return performanceManager._isObjectInViewport(obj, {
+            left: camera.x - performanceManager.VIEWPORT_CULLING_MARGIN,
+            right: camera.x + canvasSize.width + performanceManager.VIEWPORT_CULLING_MARGIN,
+            top: camera.y - performanceManager.VIEWPORT_CULLING_MARGIN,
+            bottom: camera.y + canvasSize.height + performanceManager.VIEWPORT_CULLING_MARGIN
+        });
+    }
+    
+    // Fallback to original implementation
     const viewportX = gameState.cameraX;
     const viewportY = gameState.cameraY;
     const viewportW = canvas.width;
     const viewportH = canvas.height;
     
     // Check if object is within viewport bounds + margin
-    return obj.x + obj.width > viewportX - VIEWPORT_CULLING_MARGIN &&
+    return obj.x + (obj.width || 32) > viewportX - VIEWPORT_CULLING_MARGIN &&
            obj.x < viewportX + viewportW + VIEWPORT_CULLING_MARGIN &&
-           obj.y + obj.height > viewportY - VIEWPORT_CULLING_MARGIN &&
+           obj.y + (obj.height || 32) > viewportY - VIEWPORT_CULLING_MARGIN &&
            obj.y < viewportY + viewportH + VIEWPORT_CULLING_MARGIN;
 }
 
@@ -5869,69 +6007,114 @@ function draw() {
         ctx.fillRect(0, 0, gameState.arenaWidth, gameState.arenaHeight);
     }
 
-    // Draw tracks first, so tanks are on top (with viewport culling)
-    gameState.tracks.forEach(track => {
-        if (isInViewport(track.x, track.y, 8, 8)) {
-            track.draw();
-        }
-    });
+    // Optimize drawing with batch culling if performance manager is available
+    if (performanceManager && isMultiplayer) {
+        const camera = { x: gameState.cameraX, y: gameState.cameraY };
+        const canvasSize = { width: canvas.width, height: canvas.height };
+        
+        // Batch cull all drawable objects
+        const visibleTracks = performanceManager.cullObjects(gameState.tracks, camera, canvasSize);
+        const visibleParticles = performanceManager.cullObjects(gameState.particles, camera, canvasSize);
+        const visibleShotEffects = performanceManager.cullObjects(gameState.shotEffects, camera, canvasSize);
+        const visibleHitEffects = performanceManager.cullObjects(gameState.hitEffects, camera, canvasSize);
+        
+        // Draw culled objects
+        visibleTracks.forEach(track => track.draw());
+        
+        // Draw obstacles (always visible for gameplay reasons)
+        gameState.obstacles.forEach(obs => {
+            if (obs.type === 'swamp' || obs.type === 'rock' || obs.type === 'oilrig') {
+                obs.draw();
+            }
+        });
+        
+        // Draw igloos above the floor (for Map 3)
+        gameState.obstacles.forEach(obs => {
+            if (obs.type === 'iglu') {
+                obs.draw();
+            }
+        });
 
-    // Draw terrain obstacles (swamp, rock, oilrig)
-    gameState.obstacles.forEach(obs => {
-        if (obs.type === 'swamp' || obs.type === 'rock' || obs.type === 'oilrig') {
-            obs.draw();
-        }
-    });
-    // Draw igloos above the floor (for Map 3)
-    gameState.obstacles.forEach(obs => {
-        if (obs.type === 'iglu') {
-            obs.draw();
-        }
-    });
-    // No need to draw rivers or bridges anymore
+        // Draw tanks (always visible for gameplay)
+        if (gameState.player) gameState.player.draw();
+        gameState.allies.forEach(ally => ally.draw());
+        gameState.enemies.forEach(enemy => enemy.draw());
 
-    // Draw tanks
-    if (gameState.player) gameState.player.draw(); // Only draw player if it exists (always render)
-    gameState.allies.forEach(ally => {
-        // Temporarily disable culling for allies
-        ally.draw();
-    });
-    gameState.enemies.forEach(enemy => {
-        // Temporarily disable culling for enemies
-        enemy.draw();
-    });
+        // Draw bullets (always visible for gameplay)
+        gameState.bullets.forEach(b => b.draw());
 
-    // Draw bullets
-    gameState.bullets.forEach(b => b.draw());
+        // Draw trees (on top of tanks)
+        gameState.obstacles.forEach(obs => {
+            if (obs.type === 'tree') {
+                obs.draw();
+            }
+        });
 
-    // Draw trees (on top of tanks sometimes if they are behind)
-    gameState.obstacles.forEach(obs => {
-        if (obs.type === 'tree') {
-            obs.draw();
-        }
-    });
+        // Draw culled effects
+        visibleParticles.forEach(p => p.draw());
+        visibleShotEffects.forEach(s => s.draw());
+        visibleHitEffects.forEach(h => h.draw());
+        
+    } else {
+        // Fallback to original drawing with individual culling
+        
+        // Draw tracks first, so tanks are on top (with viewport culling)
+        gameState.tracks.forEach(track => {
+            if (isInViewport({ x: track.x, y: track.y, width: 8, height: 8 })) {
+                track.draw();
+            }
+        });
 
-    // Draw particles (explosions) with viewport culling
-    gameState.particles.forEach(p => {
-        if (isInViewport(p.x, p.y, p.size * 2, p.size * 2)) {
-            p.draw();
-        }
-    });
+        // Draw terrain obstacles (swamp, rock, oilrig)
+        gameState.obstacles.forEach(obs => {
+            if (obs.type === 'swamp' || obs.type === 'rock' || obs.type === 'oilrig') {
+                obs.draw();
+            }
+        });
+        
+        // Draw igloos above the floor (for Map 3)
+        gameState.obstacles.forEach(obs => {
+            if (obs.type === 'iglu') {
+                obs.draw();
+            }
+        });
 
-    // Draw shot effects (muzzle flashes and smoke) with viewport culling
-    gameState.shotEffects.forEach(s => {
-        if (isInViewport(s.x, s.y, 30, 30)) {
-            s.draw();
-        }
-    });
+        // Draw tanks
+        if (gameState.player) gameState.player.draw();
+        gameState.allies.forEach(ally => ally.draw());
+        gameState.enemies.forEach(enemy => enemy.draw());
 
-    // Draw hit effects (sparks) with viewport culling
-    gameState.hitEffects.forEach(h => {
-        if (isInViewport(h.x, h.y, 20, 20)) {
-            h.draw();
-        }
-    });
+        // Draw bullets
+        gameState.bullets.forEach(b => b.draw());
 
+        // Draw trees (on top of tanks)
+        gameState.obstacles.forEach(obs => {
+            if (obs.type === 'tree') {
+                obs.draw();
+            }
+        });
+
+        // Draw particles (explosions) with viewport culling
+        gameState.particles.forEach(p => {
+            if (isInViewport({ x: p.x, y: p.y, width: p.size * 2, height: p.size * 2 })) {
+                p.draw();
+            }
+        });
+
+        // Draw shot effects (muzzle flashes and smoke) with viewport culling
+        gameState.shotEffects.forEach(s => {
+            if (isInViewport({ x: s.x, y: s.y, width: 30, height: 30 })) {
+                s.draw();
+            }
+        });
+
+        // Draw hit effects (sparks) with viewport culling
+        gameState.hitEffects.forEach(h => {
+            if (isInViewport({ x: h.x, y: h.y, width: 20, height: 20 })) {
+                h.draw();
+            }
+        });
+    }
 
     ctx.restore();
 
@@ -6115,6 +6298,14 @@ function drawMinimap() {
 function checkRoundEnd() {
     if (gameState.roundOver) return;
 
+    // Handle multiplayer differently from single player
+    if (isMultiplayer) {
+        // In multiplayer, the server handles game ending
+        // Client just handles local UI state when notified
+        return;
+    }
+
+    // Single player logic remains the same
     let winner = null;
     // Check for alive tanks in player's team (player OR allies)
     const playerTeamAlive = (gameState.player && gameState.player.health > 0) || gameState.allies.some(ally => ally.health > 0);
@@ -6130,6 +6321,184 @@ function checkRoundEnd() {
     if (winner) {
         endRound(winner);
     }
+}
+
+// Handle multiplayer player elimination
+function handlePlayerElimination(playerName) {
+    if (!isMultiplayer || !socket) return;
+    
+    try {
+        // Emit elimination event to server with error handling
+        socket.emit('player-eliminated', {
+            playerName: playerName || 'Unknown Player',
+            timestamp: Date.now()
+        });
+        
+        console.log(`Player ${playerName} eliminated and reported to server`);
+    } catch (error) {
+        console.error('Failed to report player elimination:', error);
+    }
+}
+
+// Enhanced multiplayer death handling
+function handleMultiplayerDeath(playerId, killedPlayerName) {
+    if (!isMultiplayer) return;
+    
+    try {
+        // Check if the dead player is the current player
+        if (playerId === socket?.id) {
+            // Current player died
+            gameState.player = null;
+            gameState.isSpectating = true;
+            
+            // Report elimination
+            handlePlayerElimination(killedPlayerName);
+            
+            // Update UI to spectator mode
+            showSpectatorMessage();
+        } else {
+            // Another player died, remove from multiplayer tanks
+            if (multiplayerTanks.has(playerId)) {
+                multiplayerTanks.delete(playerId);
+            }
+        }
+    } catch (error) {
+        console.error('Error handling multiplayer death:', error);
+    }
+}
+
+function showSpectatorMessage() {
+    // Show spectator UI if available
+    const spectatorUI = document.getElementById('spectator-ui');
+    if (spectatorUI) {
+        spectatorUI.style.display = 'block';
+    }
+    
+    // Add spectator message to game area
+    const gameArea = document.getElementById('gameArea');
+    if (gameArea) {
+        let spectatorMsg = document.getElementById('spectator-message');
+        if (!spectatorMsg) {
+            spectatorMsg = document.createElement('div');
+            spectatorMsg.id = 'spectator-message';
+            spectatorMsg.style.cssText = `
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.8);
+                color: white;
+                padding: 20px;
+                border-radius: 10px;
+                text-align: center;
+                z-index: 1000;
+                font-size: 18px;
+            `;
+            spectatorMsg.innerHTML = `
+                <h3>Ste eliminovaný!</h3>
+                <p>Sledujete hru ako divák.</p>
+                <p>Pohyb: WASD</p>
+            `;
+            gameArea.appendChild(spectatorMsg);
+        }
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            if (spectatorMsg) {
+                spectatorMsg.style.opacity = '0.5';
+            }
+        }, 5000);
+    }
+}
+
+function showEliminationMessage(data) {
+    const message = data.playerId === socket?.id ? 
+        'Boli ste eliminovaný!' : 
+        `${data.playerName} bol eliminovaný!`;
+    
+    showNotification(message, 'info', 3000);
+}
+
+function showDisconnectionMessage(data) {
+    const message = `${data.playerName} sa odpojil zo hry`;
+    showNotification(message, 'warning', 3000);
+}
+
+function updateHostUI() {
+    // Update host indicators in UI
+    const hostIndicators = document.querySelectorAll('.host-indicator');
+    hostIndicators.forEach(indicator => {
+        indicator.style.display = isHost ? 'block' : 'none';
+    });
+    
+    // Update buttons that only host can use
+    const hostOnlyButtons = document.querySelectorAll('.host-only');
+    hostOnlyButtons.forEach(button => {
+        button.disabled = !isHost;
+        if (isHost) {
+            button.classList.remove('disabled');
+        } else {
+            button.classList.add('disabled');
+        }
+    });
+}
+
+function showNotification(message, type = 'info', duration = 3000) {
+    // Create notification element if it doesn't exist
+    let notificationContainer = document.getElementById('notification-container');
+    if (!notificationContainer) {
+        notificationContainer = document.createElement('div');
+        notificationContainer.id = 'notification-container';
+        notificationContainer.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            max-width: 300px;
+        `;
+        document.body.appendChild(notificationContainer);
+    }
+    
+    // Create notification
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.style.cssText = `
+        background: ${type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#4caf50'};
+        color: white;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        animation: slideIn 0.3s ease-out;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+    `;
+    notification.textContent = message;
+    
+    // Add animation styles if not already added
+    if (!document.getElementById('notification-styles')) {
+        const style = document.createElement('style');
+        style.id = 'notification-styles';
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    notificationContainer.appendChild(notification);
+    
+    // Auto remove
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, duration);
 }
 
 function endRound(winner) {
@@ -7083,6 +7452,9 @@ function reinitializeCharacterSelection() {
 
 // Initialize multiplayer mode selection when page loads
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize managers first
+    initializeManagers();
+    
     initMultiplayerModeSelection();
     initTeamSelectionListeners();
     initLobbySelectionListeners();
