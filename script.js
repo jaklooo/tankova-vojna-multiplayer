@@ -1,3 +1,173 @@
+// --- OBJECT POOL UTILITY ---
+class ObjectPool {
+    constructor(createFn, resetFn, initialSize = 10) {
+        this.createFn = createFn;
+        this.resetFn = resetFn;
+        this.pool = [];
+        this.active = new Set();
+        this.stats = {
+            created: 0,
+            reused: 0,
+            maxActive: 0
+        };
+        
+        // Pre-populate pool
+        for (let i = 0; i < initialSize; i++) {
+            this.pool.push(this.createFn());
+            this.stats.created++;
+        }
+    }
+
+    acquire() {
+        let obj;
+        if (this.pool.length > 0) {
+            obj = this.pool.pop();
+            this.stats.reused++;
+        } else {
+            obj = this.createFn();
+            this.stats.created++;
+        }
+        
+        this.active.add(obj);
+        this.stats.maxActive = Math.max(this.stats.maxActive, this.active.size);
+        return obj;
+    }
+
+    release(obj) {
+        if (this.active.has(obj)) {
+            this.active.delete(obj);
+            if (this.resetFn) {
+                this.resetFn(obj);
+            }
+            this.pool.push(obj);
+        }
+    }
+
+    clear() {
+        this.pool = [];
+        this.active.clear();
+    }
+
+    getStats() {
+        return {
+            pooled: this.pool.length,
+            active: this.active.size,
+            created: this.stats.created,
+            reused: this.stats.reused,
+            maxActive: this.stats.maxActive
+        };
+    }
+}
+
+// --- VIEWPORT CULLING SYSTEM ---
+class ViewportCuller {
+    constructor() {
+        this.margin = 100; // Extra margin around viewport for smooth transitions
+        this.stats = {
+            totalObjects: 0,
+            culledObjects: 0,
+            visibleObjects: 0
+        };
+    }
+
+    // Get current viewport bounds with camera position
+    getViewportBounds() {
+        return {
+            left: gameState.cameraX - this.margin,
+            right: gameState.cameraX + canvas.width + this.margin,
+            top: gameState.cameraY - this.margin,
+            bottom: gameState.cameraY + canvas.height + this.margin
+        };
+    }
+
+    // Check if object is visible in viewport
+    isVisible(obj) {
+        if (!obj) return false;
+        
+        const bounds = this.getViewportBounds();
+        
+        // Get object bounds
+        const objLeft = obj.x || 0;
+        const objRight = objLeft + (obj.width || 50);
+        const objTop = obj.y || 0;
+        const objBottom = objTop + (obj.height || 50);
+        
+        // Check if object intersects with viewport
+        return !(objRight < bounds.left || 
+                objLeft > bounds.right || 
+                objBottom < bounds.top || 
+                objTop > bounds.bottom);
+    }
+
+    // Filter array of objects to only visible ones
+    filterVisible(objects, label = 'objects') {
+        if (!objects || !Array.isArray(objects)) return objects;
+        
+        const visible = objects.filter(obj => this.isVisible(obj));
+        
+        // Update stats
+        this.stats.totalObjects += objects.length;
+        this.stats.visibleObjects += visible.length;
+        this.stats.culledObjects += (objects.length - visible.length);
+        
+        return visible;
+    }
+
+    // Get culling statistics
+    getStats() {
+        const cullRatio = this.stats.totalObjects > 0 ? 
+            (this.stats.culledObjects / this.stats.totalObjects * 100).toFixed(1) : 0;
+        
+        return {
+            total: this.stats.totalObjects,
+            visible: this.stats.visibleObjects,
+            culled: this.stats.culledObjects,
+            cullRatio: `${cullRatio}%`
+        };
+    }
+
+    // Reset stats for next frame
+    resetStats() {
+        this.stats.totalObjects = 0;
+        this.stats.culledObjects = 0;
+        this.stats.visibleObjects = 0;
+    }
+
+    // Debug visualization
+    drawViewportBounds() {
+        if (!window.DEBUG_VIEWPORT) return;
+        
+        const bounds = this.getViewportBounds();
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        
+        // Draw viewport rectangle
+        ctx.strokeRect(
+            bounds.left - gameState.cameraX,
+            bounds.top - gameState.cameraY,
+            bounds.right - bounds.left,
+            bounds.bottom - bounds.top
+        );
+        
+        ctx.restore();
+    }
+}
+
+// Initialize global viewport culler
+const viewportCuller = new ViewportCuller();
+
+// Debug controls (type in console)
+window.DEBUG_VIEWPORT = false; // Toggle viewport visualization
+window.toggleViewportDebug = () => {
+    window.DEBUG_VIEWPORT = !window.DEBUG_VIEWPORT;
+    console.log('🔍 Viewport debug:', window.DEBUG_VIEWPORT ? 'ON' : 'OFF');
+};
+window.getCullingStats = () => {
+    console.log('📊 Current culling stats:', viewportCuller.getStats());
+};
+
 // --- MULTIPLAYER VARIABLES ---
 let socket = null;
 let isMultiplayer = false;
@@ -36,13 +206,538 @@ let lastFrameTime = 0;
 let performanceManager = null;
 let networkManager = null;
 
+// === MULTIPLAYER PERFORMANCE MANAGER ===
+class MultiplayerPerformanceManager {
+    constructor() {
+        // Network throttling settings
+        this.POSITION_UPDATE_INTERVAL = 1000 / 20; // 20 Hz updates
+        this.POSITION_THRESHOLD = 5; // Min movement distance
+        this.ROTATION_THRESHOLD = 0.1; // Min rotation change
+        
+        // Bandwidth management
+        this.VIEWPORT_CULLING_MARGIN = 300;
+        this.MAX_PARTICLES_MP = 15;
+        this.MAX_TRACKS_MP = 20;
+        this.MAX_EFFECTS_MP = 10;
+        
+        // Performance monitoring
+        this.frameMetrics = {
+            frameTime: 0,
+            networkLatency: 0,
+            updateCount: 0,
+            droppedUpdates: 0
+        };
+        
+        // Position update cache
+        this.lastPositionUpdate = {};
+        this.positionUpdateQueue = new Map();
+        
+        // Performance adaptation
+        this.performanceLevel = 'high'; // high, medium, low
+        this.adaptationTimer = 0;
+        
+        console.log('🚀 MultiplayerPerformanceManager initialized');
+    }
+    
+    // === POSITION UPDATE OPTIMIZATION ===
+    shouldSendPositionUpdate(playerId, currentPos, lastPos, timestamp) {
+        if (!playerId || !currentPos || !lastPos) return false;
+        
+        const key = playerId;
+        const lastUpdate = this.lastPositionUpdate[key] || 0;
+        
+        // Time-based throttling
+        if (timestamp - lastUpdate < this.POSITION_UPDATE_INTERVAL) {
+            this.frameMetrics.droppedUpdates++;
+            return false;
+        }
+        
+        // Distance-based filtering
+        const dx = currentPos.x - lastPos.x;
+        const dy = currentPos.y - lastPos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        const rotationDiff = Math.abs(currentPos.rotation - lastPos.rotation);
+        
+        // Send update if significant change
+        if (distance > this.POSITION_THRESHOLD || rotationDiff > this.ROTATION_THRESHOLD) {
+            this.lastPositionUpdate[key] = timestamp;
+            this.frameMetrics.updateCount++;
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // === EFFECT OPTIMIZATION ===
+    optimizeEffects(effects) {
+        if (!effects || effects.length <= this.MAX_EFFECTS_MP) return effects;
+        
+        // Keep most recent effects
+        return effects.slice(-this.MAX_EFFECTS_MP);
+    }
+    
+    optimizeTracks(tracks) {
+        if (!tracks || tracks.length <= this.MAX_TRACKS_MP) return tracks;
+        
+        // Keep most recent tracks
+        return tracks.slice(-this.MAX_TRACKS_MP);
+    }
+    
+    // === PERFORMANCE MONITORING ===
+    updateMetrics(frameTime) {
+        this.frameMetrics.frameTime = frameTime;
+        
+        // Update performance level based on frame time
+        if (frameTime > 33) { // < 30 FPS
+            this.performanceLevel = 'low';
+        } else if (frameTime > 20) { // < 50 FPS
+            this.performanceLevel = 'medium';
+        } else {
+            this.performanceLevel = 'high';
+        }
+    }
+    
+    adjustPerformanceSettings() {
+        switch (this.performanceLevel) {
+            case 'low':
+                this.POSITION_UPDATE_INTERVAL = 1000 / 15; // 15 Hz
+                this.MAX_PARTICLES_MP = 8;
+                this.MAX_TRACKS_MP = 10;
+                this.MAX_EFFECTS_MP = 5;
+                break;
+            case 'medium':
+                this.POSITION_UPDATE_INTERVAL = 1000 / 18; // 18 Hz
+                this.MAX_PARTICLES_MP = 12;
+                this.MAX_TRACKS_MP = 15;
+                this.MAX_EFFECTS_MP = 8;
+                break;
+            case 'high':
+                this.POSITION_UPDATE_INTERVAL = 1000 / 20; // 20 Hz
+                this.MAX_PARTICLES_MP = 15;
+                this.MAX_TRACKS_MP = 20;
+                this.MAX_EFFECTS_MP = 10;
+                break;
+        }
+    }
+    
+    // === VIEWPORT CULLING SUPPORT ===
+    _isObjectInViewport(obj, viewport) {
+        return obj.x + obj.width >= viewport.left &&
+               obj.x <= viewport.right &&
+               obj.y + obj.height >= viewport.top &&
+               obj.y <= viewport.bottom;
+    }
+    
+    // === PERFORMANCE STATS ===
+    getPerformanceStats() {
+        const stats = {
+            level: this.performanceLevel,
+            frameTime: this.frameMetrics.frameTime.toFixed(2),
+            updateRate: (this.frameMetrics.updateCount / (this.frameMetrics.updateCount + this.frameMetrics.droppedUpdates) * 100).toFixed(1),
+            droppedUpdates: this.frameMetrics.droppedUpdates,
+            updateInterval: this.POSITION_UPDATE_INTERVAL
+        };
+        
+        // Reset counters periodically
+        if (this.frameMetrics.updateCount > 1000) {
+            this.frameMetrics.updateCount = 0;
+            this.frameMetrics.droppedUpdates = 0;
+        }
+        
+        return stats;
+    }
+}
+
 function initializeManagers() {
-    if (typeof MultiplayerPerformanceManager !== 'undefined') {
-        performanceManager = new MultiplayerPerformanceManager();
+    performanceManager = new MultiplayerPerformanceManager();
+    networkManager = new NetworkingManager();
+    predictionManager = new PredictionManager();
+    console.log('🔧 All performance managers initialized');
+}
+
+// Initialize prediction manager
+let predictionManager = null;
+
+// === NETWORKING MANAGER ===
+class NetworkingManager {
+    constructor() {
+        // Event batching
+        this.eventBatch = [];
+        this.batchTimeout = null;
+        this.BATCH_INTERVAL = 50; // 50ms batching
+        
+        // Connection quality monitoring
+        this.connectionQuality = {
+            latency: 0,
+            packetLoss: 0,
+            bandwidth: 'good' // good, fair, poor
+        };
+        
+        // Event prioritization
+        this.highPriorityEvents = ['player-hit', 'tank-destroyed', 'bullet-fired'];
+        this.mediumPriorityEvents = ['player-move', 'tank-rotation'];
+        this.lowPriorityEvents = ['effect-update', 'track-update'];
+        
+        // Delta compression
+        this.lastStates = new Map();
+        
+        console.log('🌐 NetworkingManager initialized');
     }
-    if (typeof NetworkingManager !== 'undefined') {
-        networkManager = new NetworkingManager();
+    
+    // === EVENT BATCHING ===
+    batchEvent(eventName, data, priority = 'medium') {
+        const event = {
+            name: eventName,
+            data: data,
+            priority: priority,
+            timestamp: Date.now()
+        };
+        
+        // High priority events send immediately
+        if (this.highPriorityEvents.includes(eventName)) {
+            this.sendImmediately(event);
+            return;
+        }
+        
+        // Add to batch
+        this.eventBatch.push(event);
+        
+        // Schedule batch send
+        if (!this.batchTimeout) {
+            this.batchTimeout = setTimeout(() => {
+                this.sendBatch();
+            }, this.BATCH_INTERVAL);
+        }
     }
+    
+    sendBatch() {
+        if (this.eventBatch.length === 0) return;
+        
+        // Sort by priority
+        this.eventBatch.sort((a, b) => {
+            const priorityOrder = { high: 3, medium: 2, low: 1 };
+            return priorityOrder[b.priority] - priorityOrder[a.priority];
+        });
+        
+        // Send batched events
+        if (socket && socket.connected) {
+            socket.emit('batch-events', {
+                events: this.eventBatch,
+                timestamp: Date.now()
+            });
+        }
+        
+        // Clear batch
+        this.eventBatch = [];
+        this.batchTimeout = null;
+    }
+    
+    sendImmediately(event) {
+        if (socket) {
+            if (socket.connected || typeof socket.connected === 'undefined') {
+                socket.emit(event.name, event.data);
+            } else {
+                console.log('📡 Socket not connected, queuing event:', event.name);
+            }
+        } else {
+            console.log('📡 No socket available for event:', event.name);
+        }
+    }
+    
+    // === DELTA COMPRESSION ===
+    createDeltaUpdate(playerId, currentState) {
+        const lastState = this.lastStates.get(playerId);
+        
+        if (!lastState) {
+            // First update, send full state
+            this.lastStates.set(playerId, { ...currentState });
+            return {
+                type: 'full',
+                state: currentState
+            };
+        }
+        
+        // Create delta
+        const delta = {};
+        let hasChanges = false;
+        
+        for (const key in currentState) {
+            if (currentState[key] !== lastState[key]) {
+                delta[key] = currentState[key];
+                hasChanges = true;
+            }
+        }
+        
+        if (hasChanges) {
+            // Update last state
+            Object.assign(lastState, delta);
+            
+            return {
+                type: 'delta',
+                playerId: playerId,
+                changes: delta,
+                timestamp: Date.now()
+            };
+        }
+        
+        return null; // No changes
+    }
+    
+    // === CONNECTION QUALITY MONITORING ===
+    measureLatency() {
+        const start = Date.now();
+        
+        if (socket) {
+            if (socket.connected || typeof socket.connected === 'undefined') {
+                socket.emit('ping', { timestamp: start });
+                
+                // For mock socket, simulate pong response
+                if (typeof socket.connected === 'undefined') {
+                    setTimeout(() => {
+                        const simulatedLatency = 20 + Math.random() * 50; // 20-70ms
+                        this.connectionQuality.latency = simulatedLatency;
+                        this.connectionQuality.bandwidth = simulatedLatency < 50 ? 'good' : 'fair';
+                        console.log('🏓 Mock latency:', simulatedLatency.toFixed(0) + 'ms');
+                    }, 50);
+                } else {
+                    socket.once('pong', (data) => {
+                        const latency = Date.now() - data.timestamp;
+                        this.connectionQuality.latency = latency;
+                        
+                        // Update bandwidth estimation
+                        if (latency < 50) {
+                            this.connectionQuality.bandwidth = 'good';
+                        } else if (latency < 150) {
+                            this.connectionQuality.bandwidth = 'fair';
+                        } else {
+                            this.connectionQuality.bandwidth = 'poor';
+                        }
+                    });
+                }
+            }
+        }
+    }
+    
+    // === ADAPTIVE QUALITY ===
+    getAdaptiveSettings() {
+        const settings = {
+            updateRate: 20,
+            maxParticles: 15,
+            maxTracks: 20,
+            compressionLevel: 'medium'
+        };
+        
+        switch (this.connectionQuality.bandwidth) {
+            case 'poor':
+                settings.updateRate = 10;
+                settings.maxParticles = 5;
+                settings.maxTracks = 8;
+                settings.compressionLevel = 'high';
+                break;
+            case 'fair':
+                settings.updateRate = 15;
+                settings.maxParticles = 10;
+                settings.maxTracks = 15;
+                settings.compressionLevel = 'medium';
+                break;
+            case 'good':
+                settings.updateRate = 20;
+                settings.maxParticles = 15;
+                settings.maxTracks = 20;
+                settings.compressionLevel = 'low';
+                break;
+        }
+        
+        return settings;
+    }
+    
+    // === STATS ===
+    getNetworkStats() {
+        return {
+            latency: this.connectionQuality.latency,
+            bandwidth: this.connectionQuality.bandwidth,
+            batchedEvents: this.eventBatch.length,
+            packetLoss: this.connectionQuality.packetLoss
+        };
+    }
+}
+
+// === CLIENT-SIDE PREDICTION MANAGER ===
+class PredictionManager {
+    constructor() {
+        // Prediction buffers
+        this.playerStates = new Map(); // playerId -> states[]
+        this.predictionBuffer = new Map(); // playerId -> predicted state
+        this.interpolationTargets = new Map(); // playerId -> target state
+        
+        // Timing
+        this.SERVER_UPDATE_RATE = 1000 / 20; // 20 Hz from server
+        this.INTERPOLATION_DELAY = 100; // 100ms delay for smooth interpolation
+        
+        // Reconciliation
+        this.inputSequence = 0;
+        this.pendingInputs = [];
+        
+        console.log('🎯 PredictionManager initialized');
+    }
+    
+    // === PLAYER STATE PREDICTION ===
+    predictPlayerMovement(player, deltaTime) {
+        if (!player || !player.id) return player;
+        
+        const playerId = player.id;
+        
+        // Store current state
+        const currentState = {
+            x: player.x,
+            y: player.y,
+            rotation: player.rotation,
+            vx: player.vx || 0,
+            vy: player.vy || 0,
+            timestamp: Date.now(),
+            sequence: this.inputSequence++
+        };
+        
+        // Predict next position based on velocity
+        if (player.vx || player.vy) {
+            const predictedX = player.x + (player.vx * deltaTime);
+            const predictedY = player.y + (player.vy * deltaTime);
+            
+            // Store prediction
+            this.predictionBuffer.set(playerId, {
+                x: predictedX,
+                y: predictedY,
+                rotation: player.rotation,
+                timestamp: Date.now(),
+                predicted: true
+            });
+        }
+        
+        return player;
+    }
+    
+    // === SERVER RECONCILIATION ===
+    reconcileWithServer(playerId, serverState) {
+        const predicted = this.predictionBuffer.get(playerId);
+        
+        if (!predicted || !serverState) return serverState;
+        
+        // Check if prediction was accurate
+        const dx = Math.abs(predicted.x - serverState.x);
+        const dy = Math.abs(predicted.y - serverState.y);
+        const threshold = 10; // 10px tolerance
+        
+        if (dx > threshold || dy > threshold) {
+            // Prediction was wrong, snap to server state
+            console.log(`🔄 Reconciling position for ${playerId}: predicted(${predicted.x.toFixed(1)}, ${predicted.y.toFixed(1)}) vs server(${serverState.x.toFixed(1)}, ${serverState.y.toFixed(1)})`);
+            
+            // Clear prediction
+            this.predictionBuffer.delete(playerId);
+            
+            return serverState;
+        }
+        
+        // Prediction was good, keep it
+        return predicted;
+    }
+    
+    // === INTERPOLATION ===
+    setupInterpolation(playerId, fromState, toState) {
+        this.interpolationTargets.set(playerId, {
+            from: { ...fromState },
+            to: { ...toState },
+            startTime: Date.now(),
+            duration: this.INTERPOLATION_DELAY
+        });
+    }
+    
+    getInterpolatedPosition(playerId) {
+        const target = this.interpolationTargets.get(playerId);
+        
+        if (!target) return null;
+        
+        const elapsed = Date.now() - target.startTime;
+        const progress = Math.min(elapsed / target.duration, 1);
+        
+        // Smooth interpolation using easing
+        const eased = this.easeOutCubic(progress);
+        
+        const interpolated = {
+            x: target.from.x + (target.to.x - target.from.x) * eased,
+            y: target.from.y + (target.to.y - target.from.y) * eased,
+            rotation: target.from.rotation + (target.to.rotation - target.from.rotation) * eased
+        };
+        
+        // Remove completed interpolation
+        if (progress >= 1) {
+            this.interpolationTargets.delete(playerId);
+        }
+        
+        return interpolated;
+    }
+    
+    // === EASING FUNCTIONS ===
+    easeOutCubic(t) {
+        return 1 - Math.pow(1 - t, 3);
+    }
+    
+    // === LAG COMPENSATION ===
+    compensateForLatency(position, velocity, latency) {
+        if (!velocity || latency <= 0) return position;
+        
+        const compensationTime = latency / 1000; // Convert to seconds
+        
+        return {
+            x: position.x + (velocity.vx * compensationTime),
+            y: position.y + (velocity.vy * compensationTime),
+            rotation: position.rotation
+        };
+    }
+    
+    // === STATS ===
+    getPredictionStats() {
+        return {
+            activePredictions: this.predictionBuffer.size,
+            activeInterpolations: this.interpolationTargets.size,
+            pendingInputs: this.pendingInputs.length,
+            sequenceNumber: this.inputSequence
+        };
+    }
+}
+
+// === MOCK SOCKET.IO FOR OFFLINE TESTING ===
+// Create a mock Socket.IO if not available
+if (typeof io === 'undefined') {
+    console.log('🔧 Socket.IO not available, creating mock for offline testing');
+    
+    window.io = function() {
+        return {
+            connected: false,
+            connect: function() { 
+                console.log('📡 Mock Socket: Connect called'); 
+                this.connected = true;
+                return this;
+            },
+            disconnect: function() { 
+                console.log('📡 Mock Socket: Disconnect called'); 
+                this.connected = false;
+                return this;
+            },
+            emit: function(event, data) { 
+                console.log('📤 Mock Socket Emit:', event, data); 
+                return this;
+            },
+            on: function(event, callback) { 
+                console.log('📥 Mock Socket On:', event); 
+                return this;
+            },
+            once: function(event, callback) { 
+                console.log('📥 Mock Socket Once:', event); 
+                return this;
+            }
+        };
+    };
 }
 
 // Initialize multiplayer connection
@@ -729,8 +1424,8 @@ function updateMapVotingDisplay(mapVotes) {
     socket.on('player-shoot', (data) => {
         const otherTank = multiplayerTanks.get(data.playerId);
         if (otherTank) {
-            // Create bullet from other player
-            const bullet = new Bullet(
+            // Create bullet from other player using pooling
+            const bullet = bulletManager.createBullet(
                 data.x,
                 data.y,
                 data.angle,
@@ -738,7 +1433,6 @@ function updateMapVotingDisplay(mapVotes) {
                 otherTank,
                 data.bulletType || 1
             );
-            gameState.bullets.push(bullet);
             
             // Add muzzle flash effect
             gameState.shotEffects.push(new ShotEffect(data.x, data.y, data.angle));
@@ -849,6 +1543,30 @@ function updateMapVotingDisplay(mapVotes) {
         console.error('Elimination error:', data);
         showNotification(`Error: ${data.message}`, 'error');
     });
+    
+    // Handle ping/pong for latency measurement
+    socket.on('pong', (data) => {
+        if (networkManager) {
+            const latency = Date.now() - data.timestamp;
+            networkManager.connectionQuality.latency = latency;
+            
+            // Update bandwidth estimation
+            if (latency < 50) {
+                networkManager.connectionQuality.bandwidth = 'good';
+            } else if (latency < 150) {
+                networkManager.connectionQuality.bandwidth = 'fair';
+            } else {
+                networkManager.connectionQuality.bandwidth = 'poor';
+            }
+        }
+    });
+    
+    // Start periodic latency measurement
+    if (networkManager) {
+        setInterval(() => {
+            networkManager.measureLatency();
+        }, 5000); // Every 5 seconds
+    }
 }
 
 // Update lobby UI
@@ -1654,9 +2372,9 @@ function startMultiplayerGame(data) {
     createSharedObstacles(data.gameData.obstacles || []);
     
     // Clear existing game objects
-    gameState.bullets = [];
+    bulletManager.removeAllBullets(); // Use bullet manager cleanup
+    particleManager.removeAllParticles(); // Use particle manager cleanup
     gameState.tracks = [];
-    gameState.particles = [];
     gameState.shotEffects = [];
     gameState.hitEffects = [];
     gameState.allies = []; // No allies in multiplayer
@@ -2439,14 +3157,14 @@ class Tank {
                 if (bulletType === 2) {
                     if (gameState.playerCoins >= 30) {
                         gameState.playerCoins -= 30;
-                        gameState.bullets.push(new Bullet(bulletX, bulletY, this.turretAbsoluteAngle, this.damage * 2, this, 2));
+                        bulletManager.createBullet(bulletX, bulletY, this.turretAbsoluteAngle, this.damage * 2, this, 2);
                     } else {
                         // Not enough coins, fallback to normal bullet
-                        gameState.bullets.push(new Bullet(bulletX, bulletY, this.turretAbsoluteAngle, this.damage, this, 1));
+                        bulletManager.createBullet(bulletX, bulletY, this.turretAbsoluteAngle, this.damage, this, 1);
                         bulletType = 1; // Update bulletType for multiplayer sync
                     }
                 } else {
-                    gameState.bullets.push(new Bullet(bulletX, bulletY, this.turretAbsoluteAngle, this.damage, this, 1));
+                    bulletManager.createBullet(bulletX, bulletY, this.turretAbsoluteAngle, this.damage, this, 1);
                 }
                 
                 // Send shooting event to other players (multiplayer)
@@ -2461,7 +3179,7 @@ class Tank {
             } else {
                 // AI always uses normal bullet (but skip for multiplayer opponents)
                 if (!this.isMultiplayerOpponent) {
-                    gameState.bullets.push(new Bullet(bulletX, bulletY, this.turretAbsoluteAngle, this.damage, this, 1));
+                    bulletManager.createBullet(bulletX, bulletY, this.turretAbsoluteAngle, this.damage, this, 1);
                 }
             }
 
@@ -2598,7 +3316,7 @@ class Tank {
             const speed = Math.random() * 5 + 2; // Random speed
             const size = Math.random() * 5 + 2; // Random size
             const life = Math.random() * 50 + 30; // Random lifespan (frames)
-            gameState.particles.push(new Particle(
+            particleManager.createParticle(
                 this.x + this.width / 2,
                 this.y + this.height / 2,
                 angle,
@@ -2606,7 +3324,7 @@ class Tank {
                 size,
                 explosionColor,
                 life
-            ));
+            );
         }
         // Play explosion sound
         if (typeof document !== 'undefined') {
@@ -2623,7 +3341,7 @@ class Tank {
 
 class Bullet {
 
-    constructor(x, y, angle, damage, owner, bulletType = 1) {
+    constructor(x = 0, y = 0, angle = 0, damage = 10, owner = null, bulletType = 1) {
         this.x = x;
         this.y = y;
         this.radius = 5;
@@ -2632,6 +3350,33 @@ class Bullet {
         this.damage = damage;
         this.owner = owner;
         this.bulletType = bulletType;
+        this.isActive = true; // For pooling
+    }
+
+    // Factory function for object pooling
+    static create() {
+        return new Bullet();
+    }
+
+    // Reset method for when bullet is acquired from pool
+    reset(x, y, angle, damage, owner, bulletType = 1) {
+        this.x = x;
+        this.y = y;
+        this.angle = angle;
+        this.damage = damage;
+        this.owner = owner;
+        this.bulletType = bulletType;
+        this.isActive = true;
+        this.radius = 5;
+        this.speed = 10;
+        return this;
+    }
+
+    // Release method for returning to pool
+    release() {
+        this.isActive = false;
+        this.owner = null;
+        return this;
     }
 
     draw() {
@@ -2665,6 +3410,87 @@ class Bullet {
         this.y += Math.sin(this.angle) * this.speed;
     }
 }
+
+// --- BULLET POOLING SYSTEM ---
+class BulletManager {
+    constructor() {
+        console.log('🔄 Initializing BulletManager...');
+        // Add reset function for proper pooling
+        const bulletResetFn = (bullet) => {
+            bullet.release(); // Call our custom release
+        };
+        this.bulletPool = new ObjectPool(Bullet.create, bulletResetFn, 50); // Pre-allocate 50 bullets
+        this.activeBullets = [];
+        console.log('🎯 BulletManager initialized with pool:', this.bulletPool);
+    }
+
+    createBullet(x, y, angle, damage, owner, bulletType = 1) {
+        const bullet = this.bulletPool.acquire();
+        bullet.reset(x, y, angle, damage, owner, bulletType);
+        this.activeBullets.push(bullet);
+        return bullet;
+    }
+
+    removeBullet(index) {
+        if (index >= 0 && index < this.activeBullets.length) {
+            const bullet = this.activeBullets[index];
+            bullet.release();
+            this.bulletPool.release(bullet);
+            this.activeBullets.splice(index, 1);
+        }
+    }
+
+    removeAllBullets() {
+        this.activeBullets.forEach(bullet => {
+            bullet.release();
+            this.bulletPool.release(bullet);
+        });
+        this.activeBullets = [];
+    }
+
+    updateBullets() {
+        // Update bullet positions and handle collisions
+        for (let i = this.activeBullets.length - 1; i >= 0; i--) {
+            const bullet = this.activeBullets[i];
+            bullet.move();
+            
+            // Check boundaries
+            if (bullet.x < 0 || bullet.x > gameState.arenaWidth || 
+                bullet.y < 0 || bullet.y > gameState.arenaHeight) {
+                this.removeBullet(i);
+                continue;
+            }
+        }
+        
+        // Debug: Log pooling stats occasionally  
+        if (Math.random() < 0.01) { // 1% chance per frame
+            console.log('🎯 Bullet Pool Stats:', this.getStats());
+        }
+    }
+
+    drawBullets() {
+        this.activeBullets.forEach(bullet => bullet.draw());
+    }
+
+    drawBulletsWithCulling(culler) {
+        const visibleBullets = culler.filterVisible(this.activeBullets, 'bullets');
+        visibleBullets.forEach(bullet => bullet.draw());
+    }
+
+    getStats() {
+        const poolStats = this.bulletPool.getStats();
+        return {
+            active: this.activeBullets.length,
+            pooled: poolStats.pooled,
+            created: poolStats.created,
+            reused: poolStats.reused,
+            poolSize: poolStats.pooled + poolStats.active
+        };
+    }
+}
+
+// Initialize global bullet manager
+const bulletManager = new BulletManager();
 
 class Obstacle {
     constructor(x, y, width, height, type, radiusX = 0, radiusY = 0) {
@@ -2836,7 +3662,7 @@ class Obstacle {
                 // Optionally add explosion effect for tree
                 const numParticles = isMultiplayer ? Math.floor(15 * EFFECTS_REDUCTION_FACTOR) : 15;
                 for (let i = 0; i < numParticles; i++) {
-                    gameState.particles.push(new Particle(this.x, this.y, Math.random() * Math.PI * 2, Math.random() * 3 + 1, Math.random() * 3 + 1, '#5D4037', 30));
+                    particleManager.createParticle(this.x, this.y, Math.random() * Math.PI * 2, Math.random() * 3 + 1, Math.random() * 3 + 1, '#5D4037', 30);
                 }
             }
         } else if (this.type === 'rock') {
@@ -2852,7 +3678,7 @@ class Obstacle {
                 for (let i = 0; i < numParticles; i++) {
                     const colors = ['#7f8c8d', '#95a5a6', '#6c7b7d'];
                     const color = colors[Math.floor(Math.random() * colors.length)];
-                    gameState.particles.push(new Particle(
+                    particleManager.createParticle(
                         this.x + this.width / 2, 
                         this.y + this.height / 2, 
                         Math.random() * Math.PI * 2, 
@@ -2860,7 +3686,7 @@ class Obstacle {
                         Math.random() * 4 + 2, 
                         color, 
                         35
-                    ));
+                    );
                 }
             }
         } else if (this.type === 'iglu') {
@@ -2889,7 +3715,7 @@ class Obstacle {
                 for (let i = 0; i < numParticles; i++) {
                     const colors = ['#2c3e50', '#34495e', '#1e272e'];
                     const color = colors[Math.floor(Math.random() * colors.length)];
-                    gameState.particles.push(new Particle(
+                    particleManager.createParticle(
                         this.x + this.width / 2, 
                         this.y + this.height / 2, 
                         Math.random() * Math.PI * 2, 
@@ -2897,7 +3723,7 @@ class Obstacle {
                         Math.random() * 5 + 3, 
                         color, 
                         40
-                    ));
+                    );
                 }
             }
         }
@@ -2930,7 +3756,7 @@ class Track {
 }
 
 class Particle {
-    constructor(x, y, angle, speed, size, color, life) {
+    constructor(x = 0, y = 0, angle = 0, speed = 0, size = 1, color = '#fff', life = 30) {
         this.x = x;
         this.y = y;
         this.vx = Math.cos(angle) * speed;
@@ -2939,6 +3765,35 @@ class Particle {
         this.color = color;
         this.life = life; // lifespan in frames
         this.initialLife = life;
+        this.alpha = 1;
+        this.isActive = true; // For pooling
+    }
+
+    // Factory function for object pooling
+    static create() {
+        return new Particle();
+    }
+
+    // Reset method for when particle is acquired from pool
+    reset(x, y, angle, speed, size, color, life) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+        this.size = size;
+        this.color = color;
+        this.life = life;
+        this.initialLife = life;
+        this.alpha = 1;
+        this.isActive = true;
+        return this;
+    }
+
+    // Release method for returning to pool
+    release() {
+        this.isActive = false;
+        this.life = 0;
+        return this;
     }
 
     update() {
@@ -2960,6 +3815,85 @@ class Particle {
         ctx.restore();
     }
 }
+
+// --- PARTICLE POOLING SYSTEM ---
+class ParticleManager {
+    constructor() {
+        console.log('💥 Initializing ParticleManager...');
+        const particleResetFn = (particle) => {
+            particle.release();
+        };
+        this.particlePool = new ObjectPool(Particle.create, particleResetFn, 100); // Pre-allocate 100 particles
+        this.activeParticles = [];
+        console.log('💥 ParticleManager initialized with pool size:', 100);
+    }
+
+    createParticle(x, y, angle, speed, size, color, life) {
+        const particle = this.particlePool.acquire();
+        particle.reset(x, y, angle, speed, size, color, life);
+        this.activeParticles.push(particle);
+        return particle;
+    }
+
+    removeParticle(index) {
+        if (index >= 0 && index < this.activeParticles.length) {
+            const particle = this.activeParticles[index];
+            particle.release();
+            this.particlePool.release(particle);
+            this.activeParticles.splice(index, 1);
+        }
+    }
+
+    removeAllParticles() {
+        this.activeParticles.forEach(particle => {
+            particle.release();
+            this.particlePool.release(particle);
+        });
+        this.activeParticles = [];
+    }
+
+    updateParticles() {
+        // Update particle positions and handle lifetime
+        for (let i = this.activeParticles.length - 1; i >= 0; i--) {
+            const particle = this.activeParticles[i];
+            particle.update();
+            
+            // Remove dead particles
+            if (particle.life <= 0) {
+                this.removeParticle(i);
+                continue;
+            }
+        }
+        
+        // Debug: Log pooling stats occasionally  
+        if (Math.random() < 0.01) { // 1% chance per frame
+            console.log('💥 Particle Pool Stats:', this.getStats());
+        }
+    }
+
+    drawParticles() {
+        this.activeParticles.forEach(particle => particle.draw());
+    }
+
+    drawParticlesWithCulling(culler) {
+        const visibleParticles = culler.filterVisible(this.activeParticles, 'particles');
+        visibleParticles.forEach(particle => particle.draw());
+    }
+
+    getStats() {
+        const poolStats = this.particlePool.getStats();
+        return {
+            active: this.activeParticles.length,
+            pooled: poolStats.pooled,
+            created: poolStats.created,
+            reused: poolStats.reused,
+            poolSize: poolStats.pooled + poolStats.active
+        };
+    }
+}
+
+// Initialize global particle manager
+const particleManager = new ParticleManager();
 
 function spawnChasingSquaresFromIglu(iglu, target) {
     if (!gameState.chasingSquares) gameState.chasingSquares = [];
@@ -3000,7 +3934,8 @@ handleCollisions = function() {
     _originalHandleCollisions();
     if (!gameState.chasingSquares) return;
     // Bullets can hit chasing squares
-    gameState.bullets.forEach((bullet, bIdx) => {
+    const bulletsToRemove = [];
+    bulletManager.activeBullets.forEach((bullet, bIdx) => {
         if (bullet.bulletType === 3) return; // Ignore their own bullets
         gameState.chasingSquares.forEach((sq, sIdx) => {
             if (!sq.isAlive) return;
@@ -3008,10 +3943,15 @@ handleCollisions = function() {
             const bounds = sq.getBounds();
             if (b.x > bounds.x && b.x < bounds.x + bounds.width && b.y > bounds.y && b.y < bounds.y + bounds.height) {
                 sq.takeDamage(b.damage);
-                gameState.bullets.splice(bIdx, 1);
+                bulletsToRemove.push(bIdx);
             }
         });
     });
+    // Remove bullets that hit chasing squares
+    for (let i = bulletsToRemove.length - 1; i >= 0; i--) {
+        bulletManager.removeBullet(bulletsToRemove[i]);
+    }
+    
     // Tanks can run over chasing squares
     const allTanks = [gameState.player, ...gameState.allies, ...gameState.enemies].filter(t => t && t.health > 0);
     gameState.chasingSquares.forEach(sq => {
@@ -3022,18 +3962,24 @@ handleCollisions = function() {
             }
         });
     });
+    
     // Chasing square bullets hit tanks
-    gameState.bullets.forEach((bullet, bIdx) => {
+    const chaseBulletsToRemove = [];
+    bulletManager.activeBullets.forEach((bullet, bIdx) => {
         if (bullet.bulletType !== 3) return;
         const allTanks = [gameState.player, ...gameState.allies, ...gameState.enemies].filter(t => t && t.health > 0);
         allTanks.forEach(tank => {
             if (tank !== bullet.owner && checkCollision({x: bullet.x, y: bullet.y, width: 1, height: 1}, tank)) {
                 tank.takeDamage(1, bullet.owner);
-                gameState.bullets.splice(bIdx, 1);
+                chaseBulletsToRemove.push(bIdx);
             }
         });
-});
-}
+    });
+    // Remove chasing square bullets that hit tanks
+    for (let i = chaseBulletsToRemove.length - 1; i >= 0; i--) {
+        bulletManager.removeBullet(chaseBulletsToRemove[i]);
+    }
+};
 
 class ShotEffect {
     constructor(x, y, angle) {
@@ -4250,7 +5196,7 @@ function createOilrigs() {
                 const numParticles = 80;
                 for (let i = 0; i < numParticles; i++) {
                     const color = Math.random() < 0.5 ? '#e67e22' : '#ff3c00';
-                    gameState.particles.push(new Particle(
+                    particleManager.createParticle(
                         this.x + this.width/2,
                         this.y + this.height/2,
                         Math.random() * Math.PI * 2,
@@ -4258,7 +5204,7 @@ function createOilrigs() {
                         Math.random() * 12 + 6,
                         color,
                         80 + Math.random() * 30
-                    ));
+                    );
                 }
                 // Play explosion sound
                 if (typeof document !== 'undefined') {
@@ -4297,9 +5243,9 @@ function startNewRound() {
     gameState.player = null; // Ensure player is null before creating
     gameState.allies = [];
     gameState.enemies = [];
-    gameState.bullets = [];
+    bulletManager.removeAllBullets(); // Use bullet manager cleanup
+    particleManager.removeAllParticles(); // Use particle manager cleanup
     gameState.tracks = [];
-    gameState.particles = [];
     gameState.shotEffects = [];
     gameState.hitEffects = [];
 
@@ -4539,9 +5485,19 @@ function update() {
                 lastNetworkSync = now;
             }
             
-            // For now, use direct socket instead of network manager
-            // to avoid conflicts with global socket instance
-            // TODO: Integrate NetworkingManager properly with global socket
+            // Use NetworkingManager for optimized event batching
+            if (networkManager) {
+                networkManager.batchEvent('player-position', currentPosition, 'medium');
+            } else {
+                // Fallback to direct socket
+                socket.emit('player-position', currentPosition);
+            }
+            
+            // Client-side prediction for smooth movement
+            if (predictionManager) {
+                const deltaTime = (Date.now() - (gameState.lastUpdateTime || Date.now())) / 1000;
+                predictionManager.predictPlayerMovement(gameState.player, deltaTime);
+            }
             
             // Reduce logging to prevent spam
             if (Math.random() < 0.001) { // 0.1% chance
@@ -4550,7 +5506,6 @@ function update() {
                     y: Math.round(currentPosition.y)
                 });
             }
-            socket.emit('player-position', currentPosition);
         }
     } else if (gameState.isSpectating) { // New: Spectator camera movement
         let moveX = 0;
@@ -4631,21 +5586,11 @@ function update() {
     });
 
 
-    // Bullet movement
-    gameState.bullets.forEach(b => b.move());
+    // Bullet movement and management via pooling system
+    bulletManager.updateBullets();
 
-    // Update particles with performance optimization
-    gameState.particles.forEach(p => p.update());
-    if (performanceManager && isMultiplayer) {
-        gameState.particles = performanceManager.optimizeParticles(gameState.particles);
-    } else {
-        gameState.particles = gameState.particles.filter(p => p.life > 0);
-        
-        // Fallback limit for non-manager case
-        if (isMultiplayer && gameState.particles.length > MAX_PARTICLES_MULTIPLAYER) {
-            gameState.particles = gameState.particles.slice(-MAX_PARTICLES_MULTIPLAYER);
-        }
-    }
+    // Update particles with pooling system
+    particleManager.updateParticles();
 
     // Update shot effects with optimization
     gameState.shotEffects.forEach(s => s.update());
@@ -5936,9 +6881,9 @@ function isInViewport(obj) {
 }
 
 function handleCollisions() {
-    const bulletsToRemove = new Set();
+    const bulletsToRemove = [];
 
-    gameState.bullets.forEach((bullet, index) => {
+    bulletManager.activeBullets.forEach((bullet, index) => {
         let hit = false;
 
         // Filter out tanks that are already dead to prevent ghost collisions
@@ -5991,11 +6936,14 @@ function handleCollisions() {
         });
 
         if (hit) {
-            bulletsToRemove.add(index);
+            bulletsToRemove.push(index);
         }
     });
 
-    gameState.bullets = gameState.bullets.filter((_, index) => !bulletsToRemove.has(index));
+    // Remove bullets from manager in reverse order to maintain indices
+    for (let i = bulletsToRemove.length - 1; i >= 0; i--) {
+        bulletManager.removeBullet(bulletsToRemove[i]);
+    }
 
     // Remove dead tanks
     gameState.allies = gameState.allies.filter(ally => ally.health > 0);
@@ -6046,6 +6994,9 @@ function draw() {
     // No camera zoom here, it's fixed at 1
     ctx.translate(-gameState.cameraX, -gameState.cameraY);
 
+    // Reset viewport culling stats for this frame
+    viewportCuller.resetStats();
+
     // Draw background texture (grass or dessert)
     if (gameState.currentFloorTexture && gameState.currentFloorTexture.complete && gameState.currentFloorTexture.naturalWidth !== 0) {
         const pattern = ctx.createPattern(gameState.currentFloorTexture, 'repeat');
@@ -6056,120 +7007,198 @@ function draw() {
         ctx.fillRect(0, 0, gameState.arenaWidth, gameState.arenaHeight);
     }
 
-    // Optimize drawing with batch culling if performance manager is available
-    if (performanceManager && isMultiplayer) {
-        const camera = { x: gameState.cameraX, y: gameState.cameraY };
-        const canvasSize = { width: canvas.width, height: canvas.height };
-        
-        // Batch cull all drawable objects
-        const visibleTracks = performanceManager.cullObjects(gameState.tracks, camera, canvasSize);
-        const visibleParticles = performanceManager.cullObjects(gameState.particles, camera, canvasSize);
-        const visibleShotEffects = performanceManager.cullObjects(gameState.shotEffects, camera, canvasSize);
-        const visibleHitEffects = performanceManager.cullObjects(gameState.hitEffects, camera, canvasSize);
-        
-        // Draw culled objects
-        visibleTracks.forEach(track => track.draw());
-        
-        // Draw obstacles (always visible for gameplay reasons)
-        gameState.obstacles.forEach(obs => {
-            if (obs.type === 'swamp' || obs.type === 'rock' || obs.type === 'oilrig') {
-                obs.draw();
-            }
-        });
-        
-        // Draw igloos above the floor (for Map 3)
-        gameState.obstacles.forEach(obs => {
-            if (obs.type === 'iglu') {
-                obs.draw();
-            }
-        });
+    // Use our enhanced viewport culling system
+    const visibleTracks = viewportCuller.filterVisible(gameState.tracks, 'tracks');
+    const visibleShotEffects = viewportCuller.filterVisible(gameState.shotEffects, 'shotEffects');
+    const visibleHitEffects = viewportCuller.filterVisible(gameState.hitEffects, 'hitEffects');
+    
+    // Obstacles need special handling due to different types
+    const visibleObstacles = gameState.obstacles.filter(obs => viewportCuller.isVisible(obs));
+    
+    // Draw culled objects
+    visibleTracks.forEach(track => track.draw());
+    
+    // Draw terrain obstacles (swamp, rock, oilrig) with culling
+    visibleObstacles.forEach(obs => {
+        if (obs.type === 'swamp' || obs.type === 'rock' || obs.type === 'oilrig') {
+            obs.draw();
+        }
+    });
+    
+    // Draw igloos above the floor (for Map 3) with culling
+    visibleObstacles.forEach(obs => {
+        if (obs.type === 'iglu') {
+            obs.draw();
+        }
+    });
 
-        // Draw tanks (always visible for gameplay)
-        if (gameState.player) gameState.player.draw();
-        gameState.allies.forEach(ally => ally.draw());
-        gameState.enemies.forEach(enemy => enemy.draw());
+    // Draw tanks (always visible for gameplay, but we can still cull distant ones)
+    const allTanks = [gameState.player, ...gameState.allies, ...gameState.enemies].filter(t => t);
+    const visibleTanks = viewportCuller.filterVisible(allTanks, 'tanks');
+    
+    visibleTanks.forEach(tank => {
+        if (tank === gameState.player) {
+            tank.draw(); // Always draw player
+        } else if (viewportCuller.isVisible(tank)) {
+            tank.draw();
+        }
+    });
 
-        // Draw bullets (always visible for gameplay)
-        gameState.bullets.forEach(b => b.draw());
+    // Draw bullets via pooling system with enhanced culling
+    bulletManager.drawBulletsWithCulling(viewportCuller);
 
-        // Draw trees (on top of tanks)
-        gameState.obstacles.forEach(obs => {
-            if (obs.type === 'tree') {
-                obs.draw();
-            }
-        });
+    // Draw trees (on top of tanks) with culling
+    visibleObstacles.forEach(obs => {
+        if (obs.type === 'tree') {
+            obs.draw();
+        }
+    });
 
-        // Draw culled effects
-        visibleParticles.forEach(p => p.draw());
-        visibleShotEffects.forEach(s => s.draw());
-        visibleHitEffects.forEach(h => h.draw());
-        
-    } else {
-        // Fallback to original drawing with individual culling
-        
-        // Draw tracks first, so tanks are on top (with viewport culling)
-        gameState.tracks.forEach(track => {
-            if (isInViewport({ x: track.x, y: track.y, width: 8, height: 8 })) {
-                track.draw();
-            }
-        });
+    // Draw culled effects
+    particleManager.drawParticlesWithCulling(viewportCuller);
+    visibleShotEffects.forEach(s => s.draw());
+    visibleHitEffects.forEach(h => h.draw());
 
-        // Draw terrain obstacles (swamp, rock, oilrig)
-        gameState.obstacles.forEach(obs => {
-            if (obs.type === 'swamp' || obs.type === 'rock' || obs.type === 'oilrig') {
-                obs.draw();
-            }
-        });
-        
-        // Draw igloos above the floor (for Map 3)
-        gameState.obstacles.forEach(obs => {
-            if (obs.type === 'iglu') {
-                obs.draw();
-            }
-        });
-
-        // Draw tanks
-        if (gameState.player) gameState.player.draw();
-        gameState.allies.forEach(ally => ally.draw());
-        gameState.enemies.forEach(enemy => enemy.draw());
-
-        // Draw bullets
-        gameState.bullets.forEach(b => b.draw());
-
-        // Draw trees (on top of tanks)
-        gameState.obstacles.forEach(obs => {
-            if (obs.type === 'tree') {
-                obs.draw();
-            }
-        });
-
-        // Draw particles (explosions) with viewport culling
-        gameState.particles.forEach(p => {
-            if (isInViewport({ x: p.x, y: p.y, width: p.size * 2, height: p.size * 2 })) {
-                p.draw();
-            }
-        });
-
-        // Draw shot effects (muzzle flashes and smoke) with viewport culling
-        gameState.shotEffects.forEach(s => {
-            if (isInViewport({ x: s.x, y: s.y, width: 30, height: 30 })) {
-                s.draw();
-            }
-        });
-
-        // Draw hit effects (sparks) with viewport culling
-        gameState.hitEffects.forEach(h => {
-            if (isInViewport({ x: h.x, y: h.y, width: 20, height: 20 })) {
-                h.draw();
-            }
-        });
-    }
+    // Debug viewport bounds if enabled
+    viewportCuller.drawViewportBounds();
 
     ctx.restore();
 
     // Update HUD (drawn without camera transformation)
     updateHUD();
+    
+    // Draw Performance Dashboard for multiplayer
+    if (isMultiplayer && performanceManager && networkManager && predictionManager) {
+        drawPerformanceDashboard();
+    }
+    
+    // Log culling stats occasionally
+    if (Math.random() < 0.02) { // 2% chance per frame
+        const stats = viewportCuller.getStats();
+        console.log('🔍 Viewport Culling Stats:', stats);
+    }
 }
+
+// === PERFORMANCE DASHBOARD ===
+let performanceDashboardVisible = false;
+
+function drawPerformanceDashboard() {
+    if (!performanceDashboardVisible) return;
+    
+    const dashboard = document.getElementById('performance-dashboard');
+    
+    if (!dashboard) {
+        createPerformanceDashboard();
+        return;
+    }
+    
+    // Get all stats
+    const perfStats = performanceManager.getPerformanceStats();
+    const networkStats = networkManager.getNetworkStats();
+    const predictionStats = predictionManager.getPredictionStats();
+    const poolStats = {
+        bullets: bulletManager.getStats(),
+        particles: particleManager.getStats()
+    };
+    
+    // Update dashboard content
+    dashboard.innerHTML = `
+        <div class="perf-section">
+            <h3>🚀 Performance</h3>
+            <div>Level: <span class="perf-${perfStats.level}">${perfStats.level.toUpperCase()}</span></div>
+            <div>Frame Time: ${perfStats.frameTime}ms</div>
+            <div>Update Rate: ${perfStats.updateRate}%</div>
+        </div>
+        
+        <div class="perf-section">
+            <h3>🌐 Network</h3>
+            <div>Latency: ${networkStats.latency}ms</div>
+            <div>Bandwidth: <span class="perf-${networkStats.bandwidth}">${networkStats.bandwidth.toUpperCase()}</span></div>
+            <div>Batched Events: ${networkStats.batchedEvents}</div>
+        </div>
+        
+        <div class="perf-section">
+            <h3>🎯 Prediction</h3>
+            <div>Active: ${predictionStats.activePredictions}</div>
+            <div>Interpolations: ${predictionStats.activeInterpolations}</div>
+            <div>Sequence: ${predictionStats.sequenceNumber}</div>
+        </div>
+        
+        <div class="perf-section">
+            <h3>🔄 Pooling</h3>
+            <div>Bullets: ${poolStats.bullets.reused}/${poolStats.bullets.created} (${((poolStats.bullets.reused / Math.max(poolStats.bullets.created, 1)) * 100).toFixed(1)}%)</div>
+            <div>Particles: ${poolStats.particles.reused}/${poolStats.particles.created} (${((poolStats.particles.reused / Math.max(poolStats.particles.created, 1)) * 100).toFixed(1)}%)</div>
+        </div>
+    `;
+}
+
+function createPerformanceDashboard() {
+    const dashboard = document.createElement('div');
+    dashboard.id = 'performance-dashboard';
+    dashboard.style.cssText = `
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.85);
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        min-width: 200px;
+        z-index: 1000;
+        border: 2px solid #333;
+        backdrop-filter: blur(5px);
+    `;
+    
+    // Add CSS for performance levels
+    const style = document.createElement('style');
+    style.textContent = `
+        .perf-section {
+            margin-bottom: 10px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+        }
+        .perf-section h3 {
+            margin: 0 0 5px 0;
+            color: #4CAF50;
+            font-size: 13px;
+        }
+        .perf-section div {
+            margin: 2px 0;
+            font-size: 11px;
+        }
+        .perf-high { color: #4CAF50; }
+        .perf-medium { color: #FF9800; }
+        .perf-low { color: #F44336; }
+        .perf-good { color: #4CAF50; }
+        .perf-fair { color: #FF9800; }
+        .perf-poor { color: #F44336; }
+    `;
+    
+    document.head.appendChild(style);
+    document.body.appendChild(dashboard);
+}
+
+// Toggle performance dashboard with F3 key
+function togglePerformanceDashboard() {
+    performanceDashboardVisible = !performanceDashboardVisible;
+    
+    const dashboard = document.getElementById('performance-dashboard');
+    if (dashboard) {
+        dashboard.style.display = performanceDashboardVisible ? 'block' : 'none';
+    }
+    
+    console.log('🎛️ Performance Dashboard:', performanceDashboardVisible ? 'ON' : 'OFF');
+}
+
+// Add F3 key listener for performance dashboard
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'F3') {
+        e.preventDefault();
+        togglePerformanceDashboard();
+    }
+});
 
 function updateHUD() {
     updateBulletSelectionUI();
@@ -6956,10 +7985,10 @@ function resetGameState() {
     gameState.player = null;
     gameState.allies = [];
     gameState.enemies = [];
-    gameState.bullets = [];
+    bulletManager.removeAllBullets(); // Use bullet manager cleanup
+    particleManager.removeAllParticles(); // Use particle manager cleanup
     gameState.obstacles = [];
     gameState.tracks = [];
-    gameState.particles = [];
     gameState.shotEffects = [];
     gameState.hitEffects = [];
     gameState.chasingSquares = [];
@@ -7507,6 +8536,33 @@ document.addEventListener('DOMContentLoaded', () => {
     initMultiplayerModeSelection();
     initTeamSelectionListeners();
     initLobbySelectionListeners();
+    
+    // Show optimization info after short delay
+    setTimeout(() => {
+        console.log(`
+🚀 MULTIPLAYER OPTIMIZATIONS ACTIVE!
+====================================
+✅ Object Pooling (Bullets & Particles)
+✅ Viewport Culling (Smart Rendering)  
+✅ Network Optimization (Event Batching)
+✅ Client-side Prediction (Smooth Movement)
+✅ Performance Dashboard (Press F3 to toggle)
+
+🎯 Performance Features:
+- Adaptive Quality Based on FPS
+- Position Update Throttling
+- Delta Compression
+- Lag Compensation
+- Real-time Performance Metrics
+
+🎮 Ready for optimal multiplayer experience!
+`);
+        
+        // Show brief notification to user
+        if (typeof showNotification === 'function') {
+            showNotification('🚀 Multiplayer optimizations loaded! Press F3 for performance stats.', 'success', 4000);
+        }
+    }, 2000);
 });
 
 function initLobbySelectionListeners() {

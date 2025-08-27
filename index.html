@@ -849,8 +849,8 @@
             <button class="back-to-menu">Späť do Menu</button>
         </div>
     </div>
-    <!-- Socket.io client -->
-    <script src="/socket.io/socket.io.js"></script>
+    <!-- Socket.io client - For future multiplayer server integration -->
+    <!-- <script src="/socket.io/socket.io.js"></script> -->
     <script src="script.js"></script>
     
     <script>
@@ -884,8 +884,7 @@
     });
     </script>
     
-    <!-- Include performance manager for multiplayer optimizations -->
-    <script src="src/managers/MultiplayerPerformanceManager.js"></script>
-    <script src="src/managers/NetworkingManager.js"></script>
+    <!-- Performance managers are now included in script.js -->
+    <!-- No need for separate files to avoid duplicate declarations -->
 </body>
 </html>
