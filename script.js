@@ -1448,6 +1448,15 @@ function updateCharacterTeamDisplay() {
     
     if (!blueTeamPlayers || !redTeamPlayers) return;
     
+    // For all-vs-all mode, hide team sections completely
+    if (selectedGameMode === 'all-vs-all') {
+        const teamSelectionStatus = document.getElementById('team-selection-status');
+        if (teamSelectionStatus) {
+            teamSelectionStatus.style.display = 'none';
+        }
+        return;
+    }
+    
     // Update team names
     if (blueTeamTitle) blueTeamTitle.textContent = teamNames.blue || 'Modrý tím';
     if (redTeamTitle) redTeamTitle.textContent = teamNames.red || 'Červený tím';
@@ -1514,6 +1523,15 @@ function updateTankTeamDisplay() {
     
     if (!blueTeamPlayers || !redTeamPlayers) return;
     
+    // For all-vs-all mode, hide team sections completely
+    if (selectedGameMode === 'all-vs-all') {
+        const teamTankStatus = document.getElementById('team-tank-status');
+        if (teamTankStatus) {
+            teamTankStatus.style.display = 'none';
+        }
+        return;
+    }
+    
     // Update team names
     if (blueTeamTitle) blueTeamTitle.textContent = teamNames.blue || 'Modrý tím';
     if (redTeamTitle) redTeamTitle.textContent = teamNames.red || 'Červený tím';
@@ -1579,6 +1597,15 @@ function updateMapTeamDisplay() {
     const redTeamTitle = document.getElementById('red-team-map-title');
     
     if (!blueTeamPlayers || !redTeamPlayers) return;
+    
+    // For all-vs-all mode, hide team sections completely
+    if (selectedGameMode === 'all-vs-all') {
+        const teamMapStatus = document.getElementById('team-map-status');
+        if (teamMapStatus) {
+            teamMapStatus.style.display = 'none';
+        }
+        return;
+    }
     
     // Update team names
     if (blueTeamTitle) blueTeamTitle.textContent = teamNames.blue || 'Modrý tím';
@@ -2798,6 +2825,7 @@ function startMultiplayerGame(data) {
             characterKey // character from server position data
         );
         tank.playerId = playerData.id;
+        tank.playerName = playerData.name; // Add player name for elimination
         
         if (isMyPlayer) {
             gameState.player = tank;
@@ -3723,6 +3751,17 @@ class Tank {
                 gameState.cameraX = this.x + this.width / 2 - canvas.width / 2;
                 gameState.cameraY = this.y + this.height / 2 - canvas.height / 2;
                 gameState.player = null; // Important: remove the player tank itself
+                
+                // Report elimination to server in multiplayer
+                if (isMultiplayer && socket && this.playerId) {
+                    handlePlayerElimination(this.playerName || 'Player');
+                }
+            }
+            
+            // Handle elimination for multiplayer tanks
+            if (isMultiplayer && socket && this.playerId && this.playerId !== socket.id) {
+                // This is another player's tank that died
+                handlePlayerElimination(this.playerName || 'Player');
             }
         }
     }
@@ -7667,6 +7706,16 @@ function handleCollisions() {
                 hit = true;
             }
         });
+
+        // Check collision with multiplayer tanks (only in multiplayer mode)
+        if (isMultiplayer) {
+            multiplayerTanks.forEach((tank, playerId) => {
+                if (bullet.owner !== tank && tank.health > 0 && checkCollision({x: bullet.x, y: bullet.y, width: 1, height: 1}, tank)) {
+                    tank.takeDamage(bullet.damage, bullet.owner); // Pass attacker
+                    hit = true;
+                }
+            });
+        }
 
         // Check collision with obstacles (trees, rocks, oilrigs, iglu)
         gameState.obstacles.forEach(obs => {
