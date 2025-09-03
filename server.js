@@ -970,6 +970,42 @@ io.on('connection', (socket) => {
         io.to(room.id).emit('game-restart');
     });
 
+    // Continue to next round (host only)
+    socket.on('continue-round', () => {
+        const room = gameRooms.get(socket.currentRoom);
+        if (!room) return;
+
+        // Only host can continue rounds
+        if (room.hostId !== socket.id) {
+            socket.emit('continue-error', {
+                message: 'Only the host can continue to the next round'
+            });
+            return;
+        }
+
+        // Check if we're in round end state and match is not over
+        if (room.gameState !== globalStateManager.gameStates.ROUND_END) {
+            socket.emit('continue-error', {
+                message: 'Cannot continue - not in round end state'
+            });
+            return;
+        }
+
+        // Check if match is already over
+        const maxScore = Math.max(room.roundScores.blue, room.roundScores.red);
+        const isMatchEnd = maxScore >= Math.ceil(room.maxRounds / 2);
+
+        if (isMatchEnd) {
+            socket.emit('continue-error', {
+                message: 'Match is already over'
+            });
+            return;
+        }
+
+        console.log(`Host ${socket.id} continuing to next round in room ${room.id}`);
+        startNextRound(room);
+    });
+
     // Handle disconnection with improved game state management
     socket.on('disconnect', () => {
         console.log('Hráč sa odpojil:', socket.id);
@@ -1302,7 +1338,7 @@ function handleGameEnd(room, result) {
 function handleTeamGameEnd(room, endResult) {
     const roundResult = globalStateManager.handleRoundEnd(room, endResult);
     const endData = globalStateManager.getEndGameData(room, endResult, roundResult);
-    
+
     // Emit round end event with comprehensive data
     io.to(room.id).emit('team-round-end', {
         round: roundResult.round,
@@ -1310,22 +1346,30 @@ function handleTeamGameEnd(room, endResult) {
         scores: roundResult.currentScore,
         roundEnd: true,
         endCondition: endResult.condition,
-        matchEnd: roundResult.isMatchEnd
+        matchEnd: roundResult.isMatchEnd,
+        currentRound: room.currentRound - 1,
+        maxRounds: room.maxRounds,
+        canContinue: !roundResult.isMatchEnd // Only allow continue if match is not over
     });
 
     if (roundResult.isMatchEnd) {
-        // Match is over
+        // Match is over - show end screen with return to menu option
         room.gameState = globalStateManager.gameStates.ENDED;
-        
+
         setTimeout(() => {
-            io.to(room.id).emit('team-match-end', endData);
+            io.to(room.id).emit('team-match-end', {
+                ...endData,
+                showReturnToMenu: true,
+                finalWinner: roundResult.matchWinner,
+                finalScores: roundResult.currentScore
+            });
         }, 3000); // Wait 3 seconds before showing end screen
     } else {
-        // Start next round
+        // Round is over but match continues - wait for host to continue
         room.gameState = globalStateManager.gameStates.ROUND_END;
-        setTimeout(() => {
-            startNextRound(room);
-        }, 5000); // Wait 5 seconds before next round
+
+        // Don't automatically start next round - wait for host continue command
+        console.log(`Round ${roundResult.round} ended. Waiting for host to continue to next round.`);
     }
 }
 

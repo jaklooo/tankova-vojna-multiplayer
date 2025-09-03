@@ -104,6 +104,7 @@ class GameStateManager {
             return {
                 name: player.name,
                 playerId: player.id,
+                selectedCharacter: player.selectedCharacter || null,
                 eliminationOrder: elimination ? elimination.eliminationOrder : 0,
                 isWinner: room.alivePlayers.has(player.id)
             };

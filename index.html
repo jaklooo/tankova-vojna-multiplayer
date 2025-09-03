@@ -845,8 +845,59 @@
         </div>
 
         <div id="end-screen" class="screen">
-            <h2 id="end-message"></h2>
-            <button class="back-to-menu">Späť do Menu</button>
+            <div class="end-screen-content">
+                <h2 id="end-message"></h2>
+                <button class="back-to-menu end-screen-btn">Späť do Menu</button>
+            </div>
+        </div>
+
+        <!-- Round Result Card - zobrazuje sa po každom kole -->
+        <div id="round-result-card" class="round-result-overlay" style="display: none;">
+            <div class="round-result-container">
+                <div class="round-result-header">
+                    <h2 id="round-result-title">Kolo dokončené!</h2>
+                    <div class="round-result-score" id="round-result-score">0 : 0</div>
+                </div>
+
+                <div class="teams-comparison">
+                    <!-- Player Team -->
+                    <div class="team-section player-team">
+                        <div class="team-captain">
+                            <img id="round-result-player-img" src="" alt="Kapitán tímu" class="captain-avatar">
+                            <div class="captain-info">
+                                <h3 id="round-result-player-name">Kapitán</h3>
+                                <p class="team-label">Tvoj tím</p>
+                            </div>
+                        </div>
+                        <div class="team-players-list" id="round-result-player-players">
+                            <!-- Hráči sa pridajú dynamicky -->
+                        </div>
+                    </div>
+
+                    <!-- VS Divider -->
+                    <div class="vs-divider">
+                        <span class="vs-text">VS</span>
+                    </div>
+
+                    <!-- Enemy Team -->
+                    <div class="team-section enemy-team">
+                        <div class="team-captain">
+                            <img id="round-result-enemy-img" src="" alt="Kapitán tímu" class="captain-avatar">
+                            <div class="captain-info">
+                                <h3 id="round-result-enemy-name">Kapitán</h3>
+                                <p class="team-label">Nepriateľský tím</p>
+                            </div>
+                        </div>
+                        <div class="team-players-list" id="round-result-enemy-players">
+                            <!-- Hráči sa pridajú dynamicky -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="round-result-actions">
+                    <button id="continue-round-btn" class="continue-btn">Pokračuj</button>
+                </div>
+            </div>
         </div>
     </div>
     <!-- Socket.io client - For future multiplayer server integration -->
