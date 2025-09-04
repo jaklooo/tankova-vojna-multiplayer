@@ -3350,20 +3350,8 @@ async function loadAudioAssets() {
 }
 
 async function preloadVideo() {
-    const introVideo = document.getElementById('intro-video');
-    if (introVideo) {
-        return new Promise(resolve => {
-            if (introVideo.readyState >= 3) {
-                // Video is already loaded enough to play
-                resolve();
-            } else {
-                introVideo.addEventListener('canplaythrough', resolve, { once: true });
-                introVideo.addEventListener('error', resolve, { once: true }); // Continue even if video fails
-                // Fallback timeout
-                setTimeout(resolve, 2000);
-            }
-        });
-    }
+    // Skip video preloading since intro video is disabled
+    return Promise.resolve();
 }
 
 // --- INITIALIZATION AND GAME START ---
@@ -3412,23 +3400,9 @@ function init() {
         // --- Handle intro video ---
         const introVideo = document.getElementById('intro-video');
         if (introVideo) {
-            // Hide all other screens initially
-            Object.values(screens).forEach(screen => screen.classList.remove('active'));
-            // Display the video and start playing
-            introVideo.style.display = 'block';
-            introVideo.play().then(() => {
-                console.log("Intro video started.");
-            }).catch(error => {
-                console.error("Error playing intro video:", error);
-                // Fallback: If autoplay is blocked or error, go straight to main menu
-                showScreen('mainMenu');
-            });
-
-            // When video ends, show main menu
-            introVideo.onended = () => {
-                console.log("Intro video ended. Showing main menu.");
-                showScreen('mainMenu');
-            };
+            // Skip intro video and go straight to main menu
+            console.log("Skipping intro video. Showing main menu directly.");
+            showScreen('mainMenu');
         } else {
             // Fallback if video element not found, go straight to main menu
             console.warn("Intro video element not found. Showing main menu directly.");
