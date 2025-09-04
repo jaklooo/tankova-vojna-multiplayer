@@ -826,6 +826,56 @@
             </div>
             </div>
             <canvas id="gameCanvas"></canvas>
+            
+            <!-- Round Result Card -->
+            <div id="round-result-card" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9); z-index: 1000; justify-content: center; align-items: center;">
+                <div style="background: linear-gradient(135deg, #BB133A 0%, #8B0F2D 50%, #BB133A 100%); border-radius: 25px; padding: 50px; max-width: 1400px; width: 95%; box-shadow: 0 25px 50px rgba(187, 19, 58, 0.4); text-align: center; border: 4px solid #ffffff;">
+                    <h2 style="color: #ffffff; margin-bottom: 20px; font-size: 2.5em; text-shadow: 3px 3px 6px rgba(0,0,0,0.7); font-weight: bold;">Hrá sa na 3 víťazné kolá</h2>
+                    
+                    <div style="display: flex; justify-content: space-around; align-items: center; margin: 40px 0;">
+                        <!-- Player Team -->
+                        <div style="text-align: center; flex: 1;">
+                            <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+                                <!-- Player Captain -->
+                                <div style="position: relative;">
+                                    <img id="round-result-player-img" src="" alt="Player Captain" style="width: 120px; height: 120px; border-radius: 50%; border: 5px solid #27ae60; box-shadow: 0 0 20px rgba(39, 174, 96, 0.5);">
+                                    <div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); background: #27ae60; color: white; padding: 5px 15px; border-radius: 15px; font-size: 0.9em; font-weight: bold;">Kapitán</div>
+                                </div>
+                                
+                                <!-- Player Allies -->
+                                <div id="round-result-player-allies" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px;">
+                                    <!-- Allies will be displayed here as small images -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Score -->
+                        <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 0 0 280px;">
+                            <div id="round-result-score" style="font-size: 4em; font-weight: bold; color: #ffffff; margin: 20px 0; text-shadow: 3px 3px 6px rgba(0,0,0,0.7); background: rgba(0,0,0,0.3); padding: 20px 40px; border-radius: 20px; border: 3px solid #f39c12;">0 : 0</div>
+                        </div>
+                        
+                        <!-- Enemy Team -->
+                        <div style="text-align: center; flex: 1;">
+                            <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+                                <!-- Enemy Captain -->
+                                <div style="position: relative;">
+                                    <img id="round-result-enemy-img" src="" alt="Enemy Captain" style="width: 120px; height: 120px; border-radius: 50%; border: 5px solid #e74c3c; box-shadow: 0 0 20px rgba(231, 76, 60, 0.5);">
+                                    <div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 5px 15px; border-radius: 15px; font-size: 0.9em; font-weight: bold;">Kapitán</div>
+                                </div>
+                                
+                                <!-- Enemy Allies -->
+                                <div id="round-result-enemy-allies" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px;">
+                                    <!-- Allies will be displayed here as small images -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button id="round-continue-btn" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); color: #BB133A; border: none; padding: 18px 50px; font-size: 1.4em; border-radius: 15px; cursor: pointer; margin-top: 30px; box-shadow: 0 6px 20px rgba(243, 156, 18, 0.4); transition: all 0.3s ease; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
+                        Pokračuj
+                    </button>
+                </div>
+            </div>
         </div>
 
         <div id="end-screen" class="screen">

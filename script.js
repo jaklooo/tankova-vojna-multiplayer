@@ -2044,6 +2044,8 @@ let gameState = {
     spectatorSpeed: 5, // New: Speed for camera movement in spectator mode
     selectedPlayerChar: null, // NOVINKA: Vybraná postava hráča
     selectedEnemyChar: null,  // NOVINKA: Náhodne vybraná postava nepriateľa
+    selectedPlayerAllies: [], // NOVINKA: Vybraní spojenci hráča
+    selectedEnemyAllies: [], // NOVINKA: Vybraní spojenci nepriateľa
     lastAiPositionCheck: Date.now(), // NOVINKA: Čas pre kontrolu zaseknutia AI
     selectedBulletType: 1 // 1 = normal, 2 = special
 };
@@ -3737,7 +3739,7 @@ function init() {
         if (selectedAllies.length !== maxAllies) return;
         // Save player selection
         gameState.selectedPlayerChar = CHARACTERS[selectedCommanderKey];
-        gameState.selectedAllies = selectedAllies.slice();
+        gameState.selectedPlayerAllies = selectedAllies.slice();
 
         // --- ENEMY SELECTION PHASE ---
         // Prepare for enemy selection in the same menu, but only with remaining characters
@@ -4301,8 +4303,8 @@ function startNewRound() {
 
     // Allies
     let allyCharKeys = [];
-    if (gameState.selectedAllies && Array.isArray(gameState.selectedAllies) && gameState.selectedAllies.length > 0) {
-        allyCharKeys = gameState.selectedAllies;
+    if (gameState.selectedPlayerAllies && Array.isArray(gameState.selectedPlayerAllies) && gameState.selectedPlayerAllies.length > 0) {
+        allyCharKeys = gameState.selectedPlayerAllies;
     } else {
         // Fill with randoms (excluding used)
         const available = charKeys.filter(k => !usedChars.includes(k));
@@ -6542,44 +6544,57 @@ function endRound(winner) {
 
     // Show round result card with captains and score
     showRoundResultCard();
-    // Delay before starting a new round or ending the game completely
-    setTimeout(() => {
-        hideRoundResultCard();
-        if (gameState.playerScore >= ROUNDS_TO_WIN) {
-            endGame(true);
-        } else if (gameState.enemyScore >= ROUNDS_TO_WIN) {
-            endGame(false);
-        } else {
-            // Re-create obstacles for the new round to have a fresh map
-            createObstacles(GAME_MODES[gameState.currentMode].obstacleDensity);
-            if (gameState.selectedMap === '3' && typeof createIglus === 'function') {
-                createIglus();
-            }
-            startNewRound();
-        }
-    }, 3000);
+    // Note: Continuation is now handled by the "Pokračuj" button in the card
 }
 // --- ROUND RESULT CARD LOGIC ---
 
 function showRoundResultCard() {
     const card = document.getElementById('round-result-card');
     if (!card) return;
+    
     // Player captain
     const playerImg = document.getElementById('round-result-player-img');
     const playerName = document.getElementById('round-result-player-name');
+    const playerAlliesDiv = document.getElementById('round-result-player-allies');
+    
     let playerCharKey = null;
     if (gameState.selectedPlayerChar && gameState.selectedPlayerChar.key) {
         playerCharKey = gameState.selectedPlayerChar.key;
     } else if (gameState.selectedPlayerChar) {
-        // Try to find key by name
         const charKeys = Object.keys(CHARACTERS);
         playerCharKey = charKeys.find(k => CHARACTERS[k].name === gameState.selectedPlayerChar.name) || charKeys[0];
     }
+    
     playerImg.src = (gameState.charImages && playerCharKey && gameState.charImages[playerCharKey]) ? gameState.charImages[playerCharKey].src : '';
-    playerName.textContent = (gameState.selectedPlayerChar && gameState.selectedPlayerChar.name) ? gameState.selectedPlayerChar.name : '';
+    if (playerName) {
+        playerName.textContent = (gameState.selectedPlayerChar && gameState.selectedPlayerChar.name) ? gameState.selectedPlayerChar.name : '';
+    }
+    
+    // Player allies
+    if (playerAlliesDiv && gameState.selectedPlayerAllies) {
+        playerAlliesDiv.innerHTML = '';
+        gameState.selectedPlayerAllies.forEach(allyKey => {
+            const ally = CHARACTERS[allyKey];
+            if (ally && gameState.charImages && gameState.charImages[allyKey]) {
+                const allyImg = document.createElement('img');
+                allyImg.src = gameState.charImages[allyKey].src;
+                allyImg.alt = ally.name;
+                allyImg.style.width = '60px';
+                allyImg.style.height = '60px';
+                allyImg.style.borderRadius = '50%';
+                allyImg.style.border = '3px solid #27ae60';
+                allyImg.style.boxShadow = '0 0 10px rgba(39, 174, 96, 0.3)';
+                allyImg.title = ally.name; // Tooltip with name
+                playerAlliesDiv.appendChild(allyImg);
+            }
+        });
+    }
+    
     // Enemy captain
     const enemyImg = document.getElementById('round-result-enemy-img');
     const enemyName = document.getElementById('round-result-enemy-name');
+    const enemyAlliesDiv = document.getElementById('round-result-enemy-allies');
+    
     let enemyCharKey = null;
     if (gameState.selectedEnemyChar && gameState.selectedEnemyChar.key) {
         enemyCharKey = gameState.selectedEnemyChar.key;
@@ -6587,11 +6602,56 @@ function showRoundResultCard() {
         const charKeys = Object.keys(CHARACTERS);
         enemyCharKey = charKeys.find(k => CHARACTERS[k].name === gameState.selectedEnemyChar.name) || charKeys[0];
     }
+    
     enemyImg.src = (gameState.charImages && enemyCharKey && gameState.charImages[enemyCharKey]) ? gameState.charImages[enemyCharKey].src : '';
-    enemyName.textContent = (gameState.selectedEnemyChar && gameState.selectedEnemyChar.name) ? gameState.selectedEnemyChar.name : '';
+    if (enemyName) {
+        enemyName.textContent = (gameState.selectedEnemyChar && gameState.selectedEnemyChar.name) ? gameState.selectedEnemyChar.name : '';
+    }
+    
+    // Enemy allies
+    if (enemyAlliesDiv && gameState.selectedEnemyAllies) {
+        enemyAlliesDiv.innerHTML = '';
+        gameState.selectedEnemyAllies.forEach(allyKey => {
+            const ally = CHARACTERS[allyKey];
+            if (ally && gameState.charImages && gameState.charImages[allyKey]) {
+                const allyImg = document.createElement('img');
+                allyImg.src = gameState.charImages[allyKey].src;
+                allyImg.alt = ally.name;
+                allyImg.style.width = '60px';
+                allyImg.style.height = '60px';
+                allyImg.style.borderRadius = '50%';
+                allyImg.style.border = '3px solid #e74c3c';
+                allyImg.style.boxShadow = '0 0 10px rgba(231, 76, 60, 0.3)';
+                allyImg.title = ally.name; // Tooltip with name
+                enemyAlliesDiv.appendChild(allyImg);
+            }
+        });
+    }
+    
     // Score
     const score = document.getElementById('round-result-score');
     score.textContent = `${gameState.playerScore} : ${gameState.enemyScore}`;
+    
+    // Add event listener for continue button
+    const continueBtn = document.getElementById('round-continue-btn');
+    if (continueBtn) {
+        continueBtn.onclick = () => {
+            hideRoundResultCard();
+            if (gameState.playerScore >= 3) {
+                endGame(true);
+            } else if (gameState.enemyScore >= 3) {
+                endGame(false);
+            } else {
+                // Re-create obstacles for the new round
+                createObstacles(GAME_MODES[gameState.currentMode].obstacleDensity);
+                if (gameState.selectedMap === '3' && typeof createIglus === 'function') {
+                    createIglus();
+                }
+                startNewRound();
+            }
+        };
+    }
+    
     card.style.display = 'flex';
 }
 
@@ -7253,7 +7313,7 @@ function reinitializeCharacterSelection() {
         
         // Save player selection
         gameState.selectedPlayerChar = CHARACTERS[selectedCommanderKey];
-        gameState.selectedAllies = selectedAllies.slice();
+        gameState.selectedPlayerAllies = selectedAllies.slice();
 
         // Start enemy selection phase
         selectionInProgress = false;
