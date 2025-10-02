@@ -1,9 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sk">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tank War Game</title>
+    <title>PK TANKY - Tank War Game</title>
+    <meta name="description" content="Multiplayer tank battle game with 40+ unique characters from around the world">
+    <meta name="keywords" content="tank game, multiplayer, battle, strategy, online game, PK TANKY">
+    <meta name="author" content="PK TANKY Team">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" as="image" href="PK.png">
+    <link rel="preload" as="image" href="menu_background.png">
+    
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -29,24 +37,23 @@
         Tvoj prehliadač nepodporuje HTML5 video.
     </video>
 
-    <!-- Menu background music -->
-    <audio id="menu-music" src="Menusound.mp3" loop preload="auto"></audio>
-    <!-- Canon shot sound effect (will be played via JS, can overlap) -->
-    <audio id="canon-shot-sound" src="canonshot.mp3" preload="auto"></audio>
-    <!-- Hit sound effects -->
-    <audio id="hitme-sound" src="hitme.mp3" preload="auto"></audio>
-    <audio id="hithim-sound" src="hithim.mp3" preload="auto"></audio>
-    <!-- Explosion sound effect -->
-    <audio id="explosion-sound" src="explosion.mp3" preload="auto"></audio>
+    <!-- Audio Container for centralized management -->
+    <div id="audio-container" style="display: none;" aria-hidden="true">
+        <audio id="menu-music" src="Menusound.mp3" loop preload="auto"></audio>
+        <audio id="canon-shot-sound" src="canonshot.mp3" preload="auto"></audio>
+        <audio id="hitme-sound" src="hitme.mp3" preload="auto"></audio>
+        <audio id="hithim-sound" src="hithim.mp3" preload="auto"></audio>
+        <audio id="explosion-sound" src="explosion.mp3" preload="auto"></audio>
+    </div>
 
     <div id="app-container">
         <div id="main-menu" class="screen active" style="position:relative;">
             <!-- PK.png in bottom right corner, double size (128px width) -->
             <img src="PK.png" alt="PK logo" style="position:absolute; right:18px; bottom:18px; width:128px; height:auto; z-index:5; opacity:0.92; pointer-events:none;">
             <h1>PK TANKY</h1>
-            <button id="start-btn">Štart Hry</button>
-            <button id="multiplayer-btn">Online Multiplayer</button>
-            <button id="tutorial-btn">Tutoriál</button>
+            <button id="start-btn" class="start-btn">Štart Hry</button>
+            <button id="multiplayer-btn" class="multiplayer-btn">Online Multiplayer</button>
+            <button id="tutorial-btn" class="tutorial-btn">Tutoriál</button>
         </div>
 
         <div id="tutorial-screen" class="screen">
@@ -65,10 +72,10 @@
             <p>Vyber si meno, ktoré uvidia ostatní hráči:</p>
             
             <div class="name-entry-form">
-                <input type="text" id="player-name-input" placeholder="Tvoje meno..." maxlength="20" />
+                <input type="text" id="player-name-input" class="player-name-input" placeholder="Tvoje meno..." maxlength="20" />
                 <div class="name-entry-buttons">
                     <button class="back-to-menu">Späť do Menu</button>
-                    <button id="confirm-name-btn" disabled>Pokračovať</button>
+                    <button id="confirm-name-btn" class="confirm-name-btn" disabled>Pokračovať</button>
                 </div>
             </div>
         </div>
@@ -79,13 +86,13 @@
             <p>Vyber si typ multiplayer hry:</p>
             
             <div class="game-modes-grid">
-                <div class="game-mode-card" data-mode="all-vs-all">
+                <div class="game-mode-card mode-btn" data-mode="all-vs-all">
                     <h3>All vs. All</h3>
                     <p>Každý proti každému - bez tímov</p>
                     <span class="mode-info">2-16 hráčov</span>
                 </div>
                 
-                <div class="game-mode-card" data-mode="team-vs-team">
+                <div class="game-mode-card mode-btn" data-mode="team-vs-team">
                     <h3>Team vs. Team</h3>
                     <p>Tímový súboj - vytvor si svoj tím</p>
                     <span class="mode-info">2-16 hráčov (tímy)</span>
@@ -775,8 +782,8 @@
         <div id="pause-menu" style="display:none; position:fixed; left:0; top:0; width:100vw; height:100vh; background:rgba(20,20,20,0.85); z-index:200; align-items:center; justify-content:center;">
             <div style="background:#232323; border-radius:18px; box-shadow:0 4px 24px #000a; padding:38px 48px; display:flex; flex-direction:column; align-items:center; gap:24px; min-width:320px;">
                 <h2 style="color:#fff; margin-bottom:12px;">Pauza</h2>
-                <button id="pause-continue-btn" style="font-size:1.2em; padding:10px 32px; margin-bottom:8px;">Pokračuj</button>
-                <button id="pause-exit-btn" style="font-size:1.2em; padding:10px 32px;">Odchod do menu</button>
+                <button id="pause-continue-btn" class="pause-continue-btn" style="font-size:1.2em; padding:10px 32px; margin-bottom:8px;">Pokračuj</button>
+                <button id="pause-exit-btn" class="pause-exit-btn" style="font-size:1.2em; padding:10px 32px;">Odchod do menu</button>
             </div>
         </div>
         <div id="game-container" class="screen">
@@ -885,41 +892,23 @@
     </div>
     <!-- Socket.io client -->
     <script src="/socket.io/socket.io.js"></script>
-    <script src="script.js"></script>
     
-    <script>
-    // Menu music logic
-    const menuMusic = document.getElementById('menu-music');
-    function playMenuMusic() {
-        if (menuMusic.paused) {
-            menuMusic.currentTime = 0;
-            menuMusic.volume = 0.5;
-            menuMusic.play().catch(()=>{});
-        }
-    }
-    function stopMenuMusic() {
-        if (!menuMusic.paused) {
-            menuMusic.pause();
-            menuMusic.currentTime = 0;
-        }
-    }
-    // Play music on menu screens, stop on game
-    document.addEventListener('DOMContentLoaded', function() {
-        playMenuMusic();
-    });
-    // Listen for screen changes from script.js
-    window.addEventListener('showScreen', function(e) {
-        const screen = e.detail;
-        if (screen === 'game') {
-            stopMenuMusic();
-        } else {
-            playMenuMusic();
-        }
-    });
-    </script>
+    <!-- Game constants and configuration -->
+    <script src="client/utils/Constants.js?v=2"></script>
+    
+    <!-- Modular components -->
+    <script src="client/audio/AudioManager.js?v=2"></script>
+    
+    <!-- Entity modules -->
+    <script src="client/entities/Track.js?v=2"></script>
+    <script src="client/entities/Particle.js?v=2"></script>
+    <script src="client/entities/Effects.js?v=2"></script>
+    
+    <!-- Main game script -->
+    <script src="script.js?v=2"></script>
     
     <!-- Include performance manager for multiplayer optimizations -->
-    <script src="src/managers/MultiplayerPerformanceManager.js"></script>
-    <script src="src/managers/NetworkingManager.js"></script>
+    <script src="src/managers/MultiplayerPerformanceManager.js?v=2"></script>
+    <script src="src/managers/NetworkingManager.js?v=2"></script>
 </body>
 </html>

@@ -1,18 +1,76 @@
-﻿/* === LOADING SCREEN STYLES === */
+﻿/* === CSS CUSTOM PROPERTIES (Variables) === */
+:root {
+    /* Primary Colors */
+    --primary-color: #BB133A;
+    --primary-dark: #8B0F2D;
+    --primary-light: #CC1A47;
+    
+    /* Secondary Colors */
+    --secondary-color: #f39c12;
+    --secondary-dark: #e67e22;
+    --success-color: #27ae60;
+    --success-light: #2ecc71;
+    --danger-color: #e74c3c;
+    --warning-color: #f39c12;
+    
+    /* Neutral Colors */
+    --white: #ffffff;
+    --black: #000000;
+    --gray-light: #bdc3c7;
+    --gray-dark: #34495e;
+    --gray-darker: #2c3e50;
+    
+    /* Border Radius */
+    --radius-small: 8px;
+    --radius-medium: 15px;
+    --radius-large: 20px;
+    --radius-xl: 25px;
+    
+    /* Shadows */
+    --shadow-light: 0 4px 16px rgba(0, 0, 0, 0.1);
+    --shadow-medium: 0 8px 24px rgba(0, 0, 0, 0.15);
+    --shadow-heavy: 0 20px 40px rgba(0, 0, 0, 0.5);
+    --shadow-primary: 0 8px 32px rgba(187, 19, 58, 0.3);
+    
+    /* Transitions */
+    --transition-fast: 0.2s ease;
+    --transition-normal: 0.3s ease;
+    --transition-slow: 0.5s ease;
+    
+    /* Font Sizes */
+    --font-small: 0.8em;
+    --font-normal: 1em;
+    --font-large: 1.2em;
+    --font-xl: 1.5em;
+    --font-xxl: 2em;
+    --font-huge: 2.5em;
+    --font-massive: 4em;
+    
+    /* Spacing */
+    --spacing-xs: 5px;
+    --spacing-sm: 10px;
+    --spacing-md: 15px;
+    --spacing-lg: 20px;
+    --spacing-xl: 30px;
+    --spacing-xxl: 40px;
+    --spacing-huge: 50px;
+}
+
+/* === LOADING SCREEN STYLES === */
 .loading-screen {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(135deg, #BB133A 0%, #8B0F2D 50%, #BB133A 100%);
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 50%, var(--primary-color) 100%);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 9999;
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.5s ease, visibility 0.5s ease;
+    transition: opacity var(--transition-slow), visibility var(--transition-slow);
 }
 .loading-screen.active {
     opacity: 1;
@@ -492,7 +550,7 @@ button:hover {
     opacity: 0.5 !important;
     pointer-events: none !important;
     position: relative;
-    border: 3px solid #f39c12 !important; /* Testovací oranžový okraj */
+    border: 3px solid var(--secondary-color) !important; /* Testovací oranžový okraj */
 }
 .character-card.random-selected::after {
     content: "🎲";
@@ -1500,7 +1558,7 @@ button:hover {
 }
 /* Náhodný výber button */
 #character-nahodny-btn {
-    background: linear-gradient(45deg, #f1c40f, #f39c12);
+    background: linear-gradient(45deg, #f1c40f, var(--secondary-color));
     color: white;
     min-width: 280px;
     min-height: 65px;
@@ -2245,7 +2303,7 @@ body::-webkit-scrollbar-thumb:hover {
 }
 .map-card:hover {
     transform: scale(1.05);
-    border-color: #f39c12;
+    border-color: var(--secondary-color);
 }
 .map-card.selected {
     border-color: #f1c40f;
@@ -2290,7 +2348,7 @@ body::-webkit-scrollbar-thumb:hover {
     width: 90%;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
     text-align: center;
-    border: 3px solid #f39c12;
+    border: 3px solid var(--secondary-color);
     animation: cardFadeIn 0.5s ease-out;
 }
 
@@ -2306,7 +2364,7 @@ body::-webkit-scrollbar-thumb:hover {
 }
 
 #round-result-card h2 {
-    color: #f39c12;
+    color: var(--secondary-color);
     margin-bottom: 10px;
     font-size: 2em;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
@@ -2358,13 +2416,13 @@ body::-webkit-scrollbar-thumb:hover {
 #round-result-score {
     font-size: 3em;
     font-weight: bold;
-    color: #f39c12;
+    color: var(--secondary-color);
     margin: 20px 0;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
 }
 
 #round-continue-btn {
-    background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+    background: linear-gradient(135deg, var(--success-color) 0%, var(--success-light) 100%);
     color: white;
     border: none;
     padding: 15px 40px;

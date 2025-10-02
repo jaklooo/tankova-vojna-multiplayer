@@ -21,15 +21,40 @@ let teamNames = { blue: 'Modrý tím', red: 'Červený tím' };
 let playerIsReady = false;
 let currentPhase = 'team-selection'; // track current phase
 
-// --- MULTIPLAYER OPTIMIZATIONS ---
+// --- AUDIO MANAGER CLASS ---
+/**
+ * AudioManager - Moved to client/audio/AudioManager.js
+ * Import it in index.html before this script
+ */
+
+// Global audio manager variable
+let audioManager = null;
+
+// --- MULTIPLAYER OPTIMIZATIONS & GAME SETTINGS ---
+// Constants moved to client/utils/Constants.js
+if (typeof GameConstants === 'undefined') {
+    throw new Error('GameConstants is not defined! Make sure Constants.js is loaded before script.js');
+}
+
+const { 
+    // Multiplayer optimizations
+    NETWORK_SYNC_INTERVAL, 
+    MULTIPLAYER_TARGET_FPS, 
+    MULTIPLAYER_FRAME_TIME,
+    EFFECTS_REDUCTION_FACTOR,
+    MAX_PARTICLES_MULTIPLAYER,
+    MAX_TRACKS_MULTIPLAYER,
+    VIEWPORT_CULLING_MARGIN,
+    // UI & Game settings
+    BASE_HUD_HEIGHT, 
+    MINIMAP_SIZE, 
+    MINIMAP_MARGIN,
+    ROUNDS_TO_WIN,
+    TANK_HEALTH_MULTIPLIER,
+    GAME_MODES
+} = GameConstants;
+
 let lastNetworkSync = 0;
-const NETWORK_SYNC_INTERVAL = 70; // Optimized to 70ms (~14 FPS) for very smooth movement
-const MULTIPLAYER_TARGET_FPS = 60; // Full FPS for smooth multiplayer experience
-const MULTIPLAYER_FRAME_TIME = 1000 / MULTIPLAYER_TARGET_FPS;
-const EFFECTS_REDUCTION_FACTOR = 0.3; // Reduce visual effects in multiplayer
-const MAX_PARTICLES_MULTIPLAYER = 15; // Limit particles in multiplayer
-const MAX_TRACKS_MULTIPLAYER = 20; // Limit tank tracks in multiplayer
-const VIEWPORT_CULLING_MARGIN = 300; // Extra margin for viewport culling (increased for multiplayer)
 let lastFrameTime = 0;
 
 // Initialize performance and networking managers
@@ -47,14 +72,23 @@ function initializeManagers() {
 
 // Initialize multiplayer connection
 function initMultiplayer(gameMode = 'all-vs-all') {
+    // Check if Socket.IO is available
+    if (typeof io === 'undefined') {
+        console.warn('Socket.IO not available - multiplayer functionality disabled');
+        alert('Multiplayer funkcionalita nie je dostupná. Spustite server alebo si vyberte offline hru.');
+        showScreen('mainMenu');
+        return;
+    }
+    
     if (socket && socket.connected) {
         socket.disconnect();
     }
     
-    socket = io();
-    selectedGameMode = gameMode;
-    
-    socket.on('connect', () => {
+    try {
+        socket = io();
+        selectedGameMode = gameMode;
+        
+        socket.on('connect', () => {
         console.log('Pripojený k serveru');
         isMultiplayer = true;
         
@@ -165,11 +199,9 @@ function initMultiplayer(gameMode = 'all-vs-all') {
         // Set current room and host status
         currentRoom = data.roomId;
         isHost = data.hostId === socket.id;
-        selectedGameMode = data.gameMode;
         
-        // Show appropriate lobby sections based on game mode
-        updateLobbyDisplay();
-        updatePlayersList();
+        // Update lobby UI with game mode
+        updateLobbyUI(data);
         
         if (selectedGameMode === 'team-vs-team') {
             updateTeamUI();
@@ -329,6 +361,12 @@ function initMultiplayer(gameMode = 'all-vs-all') {
             if (teamSelection) teamSelection.style.display = 'none';
             if (characterSelection) characterSelection.style.display = 'block';
             
+            // Hide team status displays for all-vs-all mode
+            if (selectedGameMode === 'all-vs-all') {
+                const teamCharacterStatus = document.getElementById('team-character-status');
+                if (teamCharacterStatus) teamCharacterStatus.style.display = 'none';
+            }
+            
             console.log('Prechod do výberu charakterov');
         } else if (data.phase === 'tank-selection') {
             // Hide character selection, show tank selection
@@ -338,6 +376,12 @@ function initMultiplayer(gameMode = 'all-vs-all') {
             if (characterSelection) characterSelection.style.display = 'none';
             if (tankSelection) tankSelection.style.display = 'block';
             
+            // Hide team status displays for all-vs-all mode
+            if (selectedGameMode === 'all-vs-all') {
+                const teamTankStatus = document.getElementById('team-tank-status');
+                if (teamTankStatus) teamTankStatus.style.display = 'none';
+            }
+            
             console.log('Prechod do výberu tankov');
         } else if (data.phase === 'map-selection') {
             // Hide tank selection, show map selection
@@ -346,6 +390,12 @@ function initMultiplayer(gameMode = 'all-vs-all') {
             
             if (tankSelection) tankSelection.style.display = 'none';
             if (mapSelection) mapSelection.style.display = 'block';
+            
+            // Hide team status displays for all-vs-all mode
+            if (selectedGameMode === 'all-vs-all') {
+                const teamMapStatus = document.getElementById('team-map-status');
+                if (teamMapStatus) teamMapStatus.style.display = 'none';
+            }
             
             console.log('Prechod do výberu máp');
         }
@@ -577,26 +627,7 @@ function updateMapTeamDisplay() {
     if (redTeamCount) redTeamCount.textContent = `${redPlayers.length} hráčov`;
 }
 
-// Helper functions to get display names
-function getCharacterName(characterKey) {
-    const characterNames = {
-        'jaccelini': 'M. Jaklović',
-        'tvaruzhkyn': 'J. Tvaruzhkyn',
-        'kindergarden': 'J. W. Gardens',
-        'landmann': 'Herr Landmann',
-        // Add more character names as needed
-    };
-    return characterNames[characterKey] || characterKey;
-}
-
-function getTankName(tankType) {
-    const tankNames = {
-        'purple': 'Obrnený Bojovník',
-        'orange': 'Rýchly Útočník',
-        'brown': 'Ťažký Moloch'
-    };
-    return tankNames[tankType] || tankType;
-}
+// Note: getCharacterName and getTankName functions moved to line ~1739 (better versions using CHARACTERS object)
 
 // Function to update map voting display for team mode
 function updateMapVotingDisplay(mapVotes) {
@@ -743,13 +774,18 @@ function updateMapVotingDisplay(mapVotes) {
             // Add muzzle flash effect
             gameState.shotEffects.push(new ShotEffect(data.x, data.y, data.angle));
             
-            // Play shooting sound
+            // Play shooting sound using AudioManager
             try {
-                const audio = new Audio('canonshot.mp3');
-                audio.preload = 'auto';
-                audio.volume = 0.35;
-                audio.currentTime = 0;
-                audio.play();
+                if (window.audioManager) {
+                    audioManager.play('canon-shot-sound', 0.35);
+                } else {
+                    // Fallback for backward compatibility
+                    const audio = new Audio('canonshot.mp3');
+                    audio.preload = 'auto';
+                    audio.volume = 0.35;
+                    audio.currentTime = 0;
+                    audio.play();
+                }
             } catch (e) {}
         }
     });
@@ -849,11 +885,23 @@ function updateMapVotingDisplay(mapVotes) {
         console.error('Elimination error:', data);
         showNotification(`Error: ${data.message}`, 'error');
     });
+        
+    } catch (error) {
+        console.error('Failed to initialize multiplayer:', error);
+        alert('Nepodarilo sa pripojiť k serveru. Skúste neskôr alebo si vyberte offline hru.');
+        showScreen('mainMenu');
+    }
 }
 
 // Update lobby UI
 function updateLobbyUI(data) {
     const lobbyStatus = document.getElementById('lobby-status');
+    
+    // Update selected game mode from server data
+    if (data.gameMode) {
+        selectedGameMode = data.gameMode;
+        console.log('Updated selectedGameMode from server:', selectedGameMode);
+    }
     
     // Get game mode name
     const gameModeNames = {
@@ -873,6 +921,8 @@ function updateLobbyUI(data) {
 }
 
 function updateLobbyDisplay() {
+    console.log('updateLobbyDisplay called, selectedGameMode:', selectedGameMode);
+    
     // Show/hide appropriate lobby sections based on game mode
     const teamSelection = document.getElementById('lobby-team-selection');
     const playersSection = document.getElementById('lobby-players');
@@ -901,11 +951,13 @@ function updateLobbyDisplay() {
     if (readyBtn) readyBtn.style.display = 'none';
     
     if (selectedGameMode === 'team-vs-team') {
+        console.log('Showing team selection for team-vs-team mode');
         // Show team selection for team mode
         teamSelection.style.display = 'block';
         // Add ready button to team selection area
         if (teamReadyBtn) teamReadyBtn.style.display = 'inline-block';
     } else {
+        console.log('Showing all sections for all-vs-all mode');
         // Show all sections for all-vs-all mode
         playersSection.style.display = 'block';
         characterSelection.style.display = 'block';
@@ -917,9 +969,22 @@ function updateLobbyDisplay() {
             allVsAllReadyBtn.style.display = 'inline-block';
         }
         
+        // Hide team status displays in all sections for all-vs-all mode
+        const teamSelectionStatus = document.getElementById('team-selection-status');
+        const teamCharacterStatus = document.getElementById('team-character-status');
+        const teamTankStatus = document.getElementById('team-tank-status');
+        const teamMapStatus = document.getElementById('team-map-status');
+        
+        if (teamSelectionStatus) teamSelectionStatus.style.display = 'none';
+        if (teamCharacterStatus) teamCharacterStatus.style.display = 'none';
+        if (teamTankStatus) teamTankStatus.style.display = 'none';
+        if (teamMapStatus) teamMapStatus.style.display = 'none';
+        
         updatePlayersList();
         updateAllVsAllReadyState();
-        updateMapVotingDisplay({});
+        if (typeof updateMapVotingDisplay === 'function') {
+            updateMapVotingDisplay({});
+        }
     }
 }
 
@@ -1195,20 +1260,7 @@ function createPlayerItem(player, hostId) {
     return playerDiv;
 }
 
-function createPlayerItem(player, hostId) {
-    const isPlayerHost = player.id === hostId;
-    
-    const playerDiv = document.createElement('div');
-    playerDiv.className = 'team-player-item';
-    
-    playerDiv.innerHTML = `
-        <span class="player-name">${player.name || 'Player'}</span>
-        ${isPlayerHost ? '<span class="host-badge">HOST</span>' : ''}
-        ${player.ready ? '<span class="ready-badge">READY</span>' : ''}
-    `;
-    
-    return playerDiv;
-}
+// Note: createPlayerItem function moved here - single version handles both team and all-vs-all modes
 
 // Show error message in lobby
 function showLobbyError(message) {
@@ -1243,20 +1295,7 @@ function initCharacterSelection() {
     });
 }
 
-// Select character in lobby
-function selectLobbyCharacter(characterId) {
-    selectedLobbyCharacter = characterId;
-    
-    // Send to server - different events for different modes
-    if (selectedGameMode === 'team-vs-team') {
-        socket.emit('select-character', { characterKey: characterId });
-    } else {
-        socket.emit('select-character', { characterId: characterId });
-    }
-    
-    // Update UI immediately
-    updateCharacterSelectionUI(characterId);
-}
+// Note: selectLobbyCharacter moved to line ~1636 (unified version for all game modes)
 
 // Update character selection UI
 function updateCharacterSelectionUI(characterId) {
@@ -1299,20 +1338,7 @@ function initTankSelection() {
     });
 }
 
-// Select tank in lobby
-function selectLobbyTank(tankId) {
-    selectedLobbyTank = tankId;
-    
-    // Send to server - different events for different modes
-    if (selectedGameMode === 'team-vs-team') {
-        socket.emit('select-tank', { tankType: tankId });
-    } else {
-        socket.emit('select-tank', { tankId: tankId });
-    }
-    
-    // Update UI immediately
-    updateTankSelectionUI(tankId);
-}
+// Note: selectLobbyTank moved to line ~1615 (unified version for all game modes)
 
 // Update tank selection UI
 function updateTankSelectionUI(tankId) {
@@ -1789,27 +1815,36 @@ function hidePauseMenu() {
     if (pauseMenu) pauseMenu.style.display = 'none';
 }
 
-// Pause/resume event listeners
-if (pauseContinueBtn) pauseContinueBtn.onclick = () => {
-    hidePauseMenu();
-    if (!gameState.roundOver && gameState.currentScreen === 'game') {
-        requestAnimationFrame(gameLoop);
-    }
-};
-if (pauseExitBtn) pauseExitBtn.onclick = () => {
-    returnToMainMenu();
-};
+// Register pause button handlers with traditional event listeners
+document.querySelectorAll('.pause-continue-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        hidePauseMenu();
+        if (!gameState.roundOver && gameState.currentScreen === 'game') {
+            requestAnimationFrame(gameLoop);
+        }
+    });
+});
 
-window.addEventListener('keydown', (e) => {
-    if (gameState.currentScreen === 'game' && e.key.toLowerCase() === 'p' && !gameState.roundOver) {
+document.querySelectorAll('.pause-exit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        returnToMainMenu();
+    });
+});
+
+// Pause key handling (P key and Escape)
+document.addEventListener('keydown', (event) => {
+    if ((event.key.toLowerCase() === 'p' || event.key === 'Escape') && 
+        gameState && gameState.currentScreen === 'game' && !gameState.roundOver) {
+        event.preventDefault();
         if (!isPaused) {
-            showPauseMenu();
+            if (window.showPauseMenu) showPauseMenu();
         } else {
-            hidePauseMenu();
+            if (window.hidePauseMenu) hidePauseMenu();
             requestAnimationFrame(gameLoop);
         }
     }
 });
+
 // --- Load bullet image ---
 // Add to loadAssets
 // (add after loading tank/char images)
@@ -1889,54 +1924,6 @@ const ctx = canvas.getContext('2d');
 // Minimap elements
 let minimapCanvas = null; // Will be created dynamically
 let minimapCtx = null;
-
-// --- GAME SETTINGS ---
-const BASE_HUD_HEIGHT = 80;
-const MINIMAP_SIZE = 180; // Size of the square minimap
-const MINIMAP_MARGIN = 10; // Margin from top-left
-
-const ROUNDS_TO_WIN = 3;
-const TANK_HEALTH_MULTIPLIER = 5;
-
-// Define game modes - Adjusted arena multipliers for larger maps
-const GAME_MODES = {
-    '1v1': {
-        playerCount: 1,
-        allyCount: 0,
-        enemyCount: 1,
-        arenaWidthMultiplier: 2.5, // Increased
-        arenaHeightMultiplier: 2.5, // Increased
-        obstacleDensity: 1.5,
-        cameraZoom: 1
-    },
-    '6v6': {
-        playerCount: 1,
-        allyCount: 5,
-        enemyCount: 6,
-        arenaWidthMultiplier: 4, // Increased
-        arenaHeightMultiplier: 4, // Increased
-        obstacleDensity: 2,
-        cameraZoom: 1
-    },
-    '12v12': {
-        playerCount: 1,
-        allyCount: 11,
-        enemyCount: 12,
-        arenaWidthMultiplier: 5,
-        arenaHeightMultiplier: 5,
-        obstacleDensity: 2.5,
-        cameraZoom: 1
-    },
-    '20v20': {
-        playerCount: 1,
-        allyCount: 19,
-        enemyCount: 20,
-        arenaWidthMultiplier: 6,
-        arenaHeightMultiplier: 6,
-        obstacleDensity: 3,
-        cameraZoom: 1
-    }
-};
 
 // --- TANK DEFINITIONS (Rebalanced and with image paths) ---
 const TANK_SPECS = {
@@ -2495,12 +2482,17 @@ class Tank {
                 }
                 if (shouldPlay) {
                     try {
-                        const src = 'canonshot.mp3';
-                        const audio = new Audio(src);
-                        audio.preload = 'auto';
-                        audio.volume = this.isPlayer ? 0.7 : 0.35;
-                        audio.currentTime = 0;
-                        audio.play();
+                        if (window.audioManager) {
+                            audioManager.play('canon-shot-sound', this.isPlayer ? 0.7 : 0.35);
+                        } else {
+                            // Fallback for backward compatibility
+                            const src = 'canonshot.mp3';
+                            const audio = new Audio(src);
+                            audio.preload = 'auto';
+                            audio.volume = this.isPlayer ? 0.7 : 0.35;
+                            audio.currentTime = 0;
+                            audio.play();
+                        }
                     } catch (e) {}
                 }
             }
@@ -2906,62 +2898,9 @@ class Obstacle {
     }
 }
 
-class Track {
-    constructor(x, y, angle, timestamp) {
-        this.x = x;
-        this.y = y;
-        this.angle = angle;
-        this.width = 20;
-        this.height = 5;
-        this.offset = 15;
-        this.timestamp = timestamp;
-    }
+// --- Track class moved to client/entities/Track.js ---
 
-    draw() {
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.angle);
-        // Sand color for desert map, else default brown
-        let sandColor = '#e2c28b'; // Light sand
-        let normalColor = '#6B4F4F'; // Brown
-        ctx.fillStyle = (typeof gameState !== 'undefined' && gameState.selectedMap === '2') ? sandColor : normalColor;
-        ctx.fillRect(-this.width / 2, -this.offset - this.height / 2, this.width, this.height);
-        ctx.fillRect(-this.width / 2, this.offset - this.height / 2, this.width, this.height);
-        ctx.restore();
-    }
-}
-
-class Particle {
-    constructor(x, y, angle, speed, size, color, life) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.cos(angle) * speed;
-        this.vy = Math.sin(angle) * speed;
-        this.size = size;
-        this.color = color;
-        this.life = life; // lifespan in frames
-        this.initialLife = life;
-    }
-
-    update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life--;
-        // Reduce size and opacity over time
-        this.size *= 0.95;
-        this.alpha = this.life / this.initialLife;
-    }
-
-    draw() {
-        ctx.save();
-        ctx.globalAlpha = this.alpha;
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size / 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    }
-}
+// --- Particle class moved to client/entities/Particle.js ---
 
 function spawnChasingSquaresFromIglu(iglu, target) {
     if (!gameState.chasingSquares) gameState.chasingSquares = [];
@@ -3037,104 +2976,7 @@ handleCollisions = function() {
 });
 }
 
-class ShotEffect {
-    constructor(x, y, angle) {
-        this.x = x;
-        this.y = y;
-        this.angle = angle; // Direction of the muzzle flash
-        this.life = 10; // frames
-        this.color = 'rgba(255, 223, 0, 0.8)'; // Yellowish flash
-        this.smokeColor = 'rgba(100, 100, 100, 0.5)'; // Grey smoke
-        this.smokeParticles = [];
-        // Generate smoke particles around the muzzle flash
-        for (let i = 0; i < 5; i++) {
-            this.smokeParticles.push({
-                x: x + Math.cos(angle) * 10, // Slightly offset from muzzle
-                y: y + Math.sin(angle) * 10,
-                vx: Math.cos(angle + (Math.random() - 0.5) * 0.5) * (Math.random() * 2 + 1), // Spread out
-                vy: Math.sin(angle + (Math.random() - 0.5) * 0.5) * (Math.random() * 2 + 1),
-                size: Math.random() * 5 + 3,
-                life: Math.random() * 20 + 10,
-                initialLife: Math.random() * 20 + 10
-            });
-        }
-    }
-
-    update() {
-        this.life--;
-        this.smokeParticles.forEach(p => {
-            p.x += p.vx;
-            p.y += p.vy;
-            p.life--;
-            p.size *= 0.9;
-        });
-        this.smokeParticles = this.smokeParticles.filter(p => p.life > 0);
-    }
-
-    draw() {
-        if (this.life > 0) {
-            ctx.save();
-            ctx.globalAlpha = this.life / 10; // Fade out flash
-            ctx.fillStyle = this.color;
-            ctx.beginPath();
-            ctx.arc(this.x + Math.cos(this.angle) * 5, this.y + Math.sin(this.angle) * 5, 8, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        }
-        // Draw smoke particles
-        this.smokeParticles.forEach(p => {
-            ctx.save();
-            ctx.globalAlpha = p.life / p.initialLife;
-            ctx.fillStyle = this.smokeColor;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        });
-    }
-}
-
-class HitEffect {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.particles = [];
-        this.life = 15; // frames
-        for (let i = 0; i < 8; i++) {
-            this.particles.push({
-                x: this.x, // Start particles at the hit location
-                y: this.y,
-                vx: (Math.random() - 0.5) * 6,
-                vy: (Math.random() - 0.5) * 6,
-                size: Math.random() * 3 + 1,
-                color: 'rgba(255, 255, 255, 0.8)' // White sparks
-            });
-        }
-    }
-
-    update() {
-        this.life--;
-        this.particles.forEach(p => {
-            p.x += p.vx;
-            p.y += p.vy;
-            p.size *= 0.9;
-        });
-    }
-
-    draw() {
-        if (this.life > 0) {
-            ctx.save();
-            ctx.globalAlpha = this.life / 15;
-            this.particles.forEach(p => {
-                ctx.fillStyle = p.color;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
-                ctx.fill();
-            });
-            ctx.restore();
-        }
-    }
-}
+// --- ShotEffect and HitEffect classes moved to client/entities/Effects.js ---
 
 // --- SCREEN MANAGEMENT ---
 function showScreen(screenName) {
@@ -3168,6 +3010,19 @@ function showScreen(screenName) {
     if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
         const evt = new CustomEvent('showScreen', { detail: screenName });
         window.dispatchEvent(evt);
+    }
+
+    // Handle menu music based on screen
+    if (screenName === 'game') {
+        // Stop menu music when entering game
+        if (window.audioManager) {
+            audioManager.fadeOut('menuMusic', 500);
+        }
+    } else {
+        // Play menu music on all other screens
+        if (window.audioManager) {
+            audioManager.playLoop('menuMusic', 0.5);
+        }
     }
 
     // Adjust app-container and canvas size for fullscreen
@@ -3358,32 +3213,32 @@ async function preloadVideo() {
 
 // --- INITIALIZATION AND GAME START ---
 function init() {
+    // Initialize audio manager first
+    audioManager = new AudioManager();
+    window.audioManager = audioManager;
+    
     // Start loading screen immediately
     initLoadingScreen();
     
-    // Bullet selection UI logic
-    if (bulletSelectionUI) {
-        bulletSelectionUI.addEventListener('click', (e) => {
-            const opt = e.target.closest('.bullet-option');
-            if (opt) {
-                const bulletType = parseInt(opt.getAttribute('data-bullet'));
-                if (bulletType === 1 || bulletType === 2) {
-                    gameState.selectedBulletType = bulletType;
-                    updateBulletSelectionUI();
-                }
+    // Register bullet selection UI handler with traditional event listeners
+    document.querySelectorAll('.bullet-option').forEach(element => {
+        element.addEventListener('click', () => {
+            const bulletType = parseInt(element.getAttribute('data-bullet'));
+            if (bulletType === 1 || bulletType === 2) {
+                gameState.selectedBulletType = bulletType;
+                updateBulletSelectionUI();
             }
         });
-    }
-    // Keyboard: 1,2 and Numpad 1,2
-    window.addEventListener('keydown', (e) => {
-        if (screens.game.classList.contains('active')) {
-            if (e.key === '1' || e.code === 'Numpad1') {
-                gameState.selectedBulletType = 1;
-                updateBulletSelectionUI();
-            } else if (e.key === '2' || e.code === 'Numpad2') {
-                gameState.selectedBulletType = 2;
-                updateBulletSelectionUI();
-            }
+    });
+    
+    // Register keyboard shortcuts with traditional event listeners
+    document.addEventListener('keydown', (event) => {
+        if (event.key === '1' && screens.game.classList.contains('active')) {
+            gameState.selectedBulletType = 1;
+            updateBulletSelectionUI();
+        } else if (event.key === '2' && screens.game.classList.contains('active')) {
+            gameState.selectedBulletType = 2;
+            updateBulletSelectionUI();
         }
     });
 
@@ -3417,15 +3272,20 @@ function init() {
     });
 
 
-    // Event Listeners for menu buttons
-    buttons.start.addEventListener('click', () => showScreen('modeSelection'));
-    buttons.multiplayer.addEventListener('click', () => {
+    // Register menu button handlers with traditional event listeners
+    document.getElementById('start-btn').addEventListener('click', () => showScreen('modeSelection'));
+    
+    document.getElementById('multiplayer-btn').addEventListener('click', () => {
         showScreen('multiplayerNameEntry');
     });
-    buttons.tutorial.addEventListener('click', () => showScreen('tutorial'));
-    buttons.backToMenu.forEach(btn => btn.addEventListener('click', () => {
-        returnToMainMenu();
-    }));
+    
+    document.getElementById('tutorial-btn').addEventListener('click', () => showScreen('tutorial'));
+    
+    document.querySelectorAll('.back-to-menu').forEach(btn => {
+        btn.addEventListener('click', () => {
+            returnToMainMenu();
+        });
+    });
 
     // Event Listeners for game mode selection
     modeButtons.forEach(btn => {
@@ -3924,31 +3784,42 @@ function init() {
     const playerNameInput = document.getElementById('player-name-input');
     const confirmNameBtn = document.getElementById('confirm-name-btn');
     
-    if (playerNameInput && confirmNameBtn) {
-        // Enable/disable confirm button based on input
+    // Register player name input handlers with traditional event listeners
+    if (playerNameInput) {
         playerNameInput.addEventListener('input', () => {
-            const name = playerNameInput.value.trim();
-            confirmNameBtn.disabled = name.length < 2;
-        });
-        
-        // Handle enter key in input
-        playerNameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !confirmNameBtn.disabled) {
-                confirmNameBtn.click();
+            const confirmNameBtn = document.getElementById('confirm-name-btn');
+            if (confirmNameBtn) {
+                const name = playerNameInput.value.trim();
+                confirmNameBtn.disabled = name.length < 2;
             }
         });
         
-        // Confirm name and proceed to mode selection
+        // Handle enter key in name input
+        playerNameInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                const confirmNameBtn = document.getElementById('confirm-name-btn');
+                if (confirmNameBtn && !confirmNameBtn.disabled) {
+                    confirmNameBtn.click();
+                }
+            }
+        });
+    }
+    
+    // Confirm name and proceed to mode selection
+    if (confirmNameBtn) {
         confirmNameBtn.addEventListener('click', () => {
-            const name = playerNameInput.value.trim();
-            if (name.length >= 2) {
-                playerName = name;
-                showScreen('multiplayerModeSelection');
+            const playerNameInput = document.getElementById('player-name-input');
+            if (playerNameInput) {
+                const name = playerNameInput.value.trim();
+                if (name.length >= 2) {
+                    playerName = name;
+                    showScreen('multiplayerModeSelection');
+                }
             }
         });
     }
 
-    // Handle window resize for fullscreen
+    // Register window resize handler
     window.addEventListener('resize', () => {
         if (gameState.currentScreen === 'game') {
             showScreen('game'); // Re-adjust canvas and arena size
@@ -4628,7 +4499,7 @@ function update() {
     if (performanceManager && isMultiplayer) {
         gameState.shotEffects = performanceManager.optimizeEffects(gameState.shotEffects);
     } else {
-        gameState.shotEffects = gameState.shotEffects.filter(s => s.life > 0 || s.smokeParticles.length > 0);
+        gameState.shotEffects = gameState.shotEffects.filter(s => s.life > 0);
     }
 
     // Update hit effects
