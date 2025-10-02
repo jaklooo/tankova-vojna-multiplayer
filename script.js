@@ -10,6 +10,9 @@ let selectedLobbyCharacter = null; // Selected character in lobby
 let selectedLobbyTank = null; // Selected tank in lobby
 let playerName = ''; // Player's chosen name
 
+// --- DEBUG & DEVELOPMENT ---
+const DEBUG_MODE = false; // Set to true to enable AI debugging logs
+
 // --- TEAM MANAGEMENT VARIABLES ---
 let selectedGameMode = 'all-vs-all';
 let playerTeam = null;
@@ -29,6 +32,12 @@ let currentPhase = 'team-selection'; // track current phase
 
 // Global audio manager variable
 let audioManager = null;
+
+// Global input manager variable
+let inputManager = null;
+
+// Global renderer variable
+let renderer = null;
 
 // --- MULTIPLAYER OPTIMIZATIONS & GAME SETTINGS ---
 // Constants moved to client/utils/Constants.js
@@ -2615,50 +2624,7 @@ class Tank {
     }
 }
 
-class Bullet {
-
-    constructor(x, y, angle, damage, owner, bulletType = 1) {
-        this.x = x;
-        this.y = y;
-        this.radius = 5;
-        this.speed = 10;
-        this.angle = angle;
-        this.damage = damage;
-        this.owner = owner;
-        this.bulletType = bulletType;
-    }
-
-    draw() {
-        // Draw bullet image if loaded, else fallback to yellow circle
-        let bulletImg = images['bullet'];
-        let w = 40, h = 16;
-        if (this.bulletType === 2) {
-            bulletImg = images['bullet2'];
-            w = 44; h = 18;
-        } else if (this.bulletType === 3) {
-            // Eskimo snowball
-            bulletImg = images['snowball'];
-            w = 32; h = 32;
-        }
-        if (bulletImg && bulletImg.complete && bulletImg.naturalWidth !== 0) {
-            ctx.save();
-            ctx.translate(this.x, this.y);
-            ctx.rotate(this.angle);
-            ctx.drawImage(bulletImg, -w/2, -h/2, w, h);
-            ctx.restore();
-        } else {
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.bulletType === 3 ? 16 : this.radius, 0, Math.PI * 2);
-            ctx.fillStyle = this.bulletType === 2 ? '#ff4444' : (this.bulletType === 3 ? '#e0f7fa' : '#ffdd00');
-            ctx.fill();
-        }
-    }
-
-    move() {
-        this.x += Math.cos(this.angle) * this.speed;
-        this.y += Math.sin(this.angle) * this.speed;
-    }
-}
+// Bullet class moved to client/entities/Bullet.js
 
 class Obstacle {
     constructor(x, y, width, height, type, radiusX = 0, radiusY = 0) {
@@ -3217,6 +3183,10 @@ function init() {
     audioManager = new AudioManager();
     window.audioManager = audioManager;
     
+    // Initialize input manager for game controls
+    inputManager = new InputManager();
+    window.inputManager = inputManager;
+    
     // Start loading screen immediately
     initLoadingScreen();
     
@@ -3253,6 +3223,10 @@ function init() {
 
         // Assign loaded assets to game state
         assignLoadedAssets();
+        
+        // Initialize renderer after assets are loaded
+        renderer = new Renderer(canvas, ctx);
+        window.renderer = renderer;
 
         // --- Handle intro video ---
         const introVideo = document.getElementById('intro-video');
@@ -3765,20 +3739,8 @@ function init() {
         });
     }
 
-    // Keyboard event listeners for player control
-    window.addEventListener('keydown', (e) => {
-        if (e.key) gameState.keys[e.key.toLowerCase()] = true;
-    });
-    window.addEventListener('keyup', (e) => {
-        if (e.key) gameState.keys[e.key.toLowerCase()] = false;
-    });
-    window.addEventListener('keydown', (e) => {
-        // Allow shooting only if player tank exists and not in spectator mode
-        if (e.code === 'Space' && gameState.currentScreen === 'game' && !gameState.roundOver && gameState.player && !gameState.isSpectating) {
-            e.preventDefault();
-            gameState.player.shoot();
-        }
-    });
+    // Keyboard event listeners moved to InputManager.js
+    // InputManager handles: keydown/keyup for movement, Space for shooting
 
     // Name Entry Event Listeners
     const playerNameInput = document.getElementById('player-name-input');
@@ -4301,6 +4263,11 @@ function interpolateAngle(from, to, progress) {
 function update() {
     if(gameState.roundOver) return;
 
+    // Sync input manager keys to gameState for compatibility
+    if (inputManager) {
+        inputManager.syncKeysToGameState();
+    }
+
     // Interpolate multiplayer opponents for smooth movement
     if (isMultiplayer) {
         multiplayerTanks.forEach((tank, playerId) => {
@@ -4461,12 +4428,19 @@ function update() {
                 );
                 
                 if (totalDistance < 20) {
+                    // Only log once when first stuck, not every frame
                     if (!tank.isStuck) {
                         tank.isStuck = true;
                         tank.stuckStartTime = now;
-                        console.log(`Tank je zaseknutý! Začínam unstuck manéver.`);
+                        if (DEBUG_MODE) {
+                            console.log(`AI Tank stuck detected, starting unstuck maneuver`);
+                        }
                     }
                 } else {
+                    // Reset stuck state when tank moves again
+                    if (tank.isStuck && DEBUG_MODE) {
+                        console.log(`AI Tank unstuck successful`);
+                    }
                     tank.isStuck = false;
                     tank.stuckStartTime = null;
                 }

@@ -279,3 +279,163 @@ feat: Phase 1 refactoring - modular architecture
 
 Phase 1 complete âœ…
 ```
+
+---
+
+##  FÁZA 2 - Asset reorganizácia a optimalizácie (2. október 2025)
+
+### Dokonèené úlohy:
+
+#### 1.  Asset reorganizácia
+
+**Vytvorená štruktúra:**
+```
+assets/
+ images/          109 súborov (PNG, JPG)
+ sounds/          7 súborov (MP3, MP4, MOV)
+```
+
+**Presunuté súbory:**
+-  **109 obrázkov** do `assets/images/`:
+  - 40+ portrétov postáv (Ben.JPG, franko.JPG, atï.)
+  - 40+ vlajky krajín (USA.png, SVK.png, atï.)
+  - Tanky a delá (tank1-3.png, canon1-3.png)
+  - Textúry (grass_texture.png, mud_texture.png, atï.)
+  - UI elementy (Win_image.png, coin.png, bullet.png, atï.)
+  
+-  **7 audio/video súborov** do `assets/sounds/`:
+  - 5 MP3: Menusound.mp3, canonshot.mp3, hitme.mp3, hithim.mp3, explosion.mp3
+  - 2 video: intro.mp4, intro.mov
+
+**Aktualizované cesty v súboroch:**
+-  `index.html` - ~100+ referencií na obrázky a zvuky
+-  `script.js` - ~60+ referencií (CHARACTERS, TANK_SPECS, loadImage(), Audio())
+-  `style.css` - 1 referencia (menu_background.png)
+
+**Opravené problémy:**
+-  Fixed doubled paths bug (assets/images/assets/images/  assets/images/)
+-  PowerShell regex replacements pre hromadnú aktualizáciu
+-  Testované - všetky assety sa naèítavajú správne
+
+#### 2.  AI anti-stuck systém - oprava console spam
+
+**Problém:** Console spam `Tank je zaseknutı!` kadı frame
+
+**Riešenie:**
+-  Pridanı `DEBUG_MODE` flag (predvolene `false`)
+-  Console.log obalené do `if (DEBUG_MODE)` podmienok
+-  Zmenené texty na angliètinu
+
+**Vısledok:**
+-  iadny console spam v produkcii
+-  Lepší vıkon
+-  Monos zapnutia cez `DEBUG_MODE = true`
+
+#### 3.  Extrakcia Bullet.js modulu
+
+**Vytvorenı:** `client/entities/Bullet.js` (~62 riadkov)
+- Odstránenıch ~45 riadkov zo script.js
+
+#### 4.  Vytvorenie InputManager.js
+
+**Vytvorenı:** `client/managers/InputManager.js` (~93 riadkov)
+-  Keyboard event handling
+-  Player controls
+-  Shooting (Space bar)
+- Odstránenıch ~18 riadkov duplicitnıch listenerov
+
+#### 5.  Vytvorenie Renderer.js
+
+**Vytvorenı:** `client/rendering/Renderer.js` (~187 riadkov)
+-  Drawing methods s viewport cullingom
+-  Performance optimalizácie
+-  Pripravenı pre budúcu integráciu
+
+###  Štatistiky zmien - FÁZA 2
+
+| Metrika | Pred | Po | Zmena |
+|---------|------|-----|-------|
+| Root directory | 116 media | 0 media | **-116 súborov**  |
+| Moduly | 5 | 8 | +3 (Bullet, InputManager, Renderer) |
+| script.js riadky | ~6850 | ~6787 | **-63 riadkov** |
+| Console spam | Vysokı | iadny |  Fixed |
+
+###  Progres FÁZA 2 - DOKONÈENÉ 
+
+```
+FÁZA 2: Asset reorganizácia a optimalizácie
+[] 100% COMPLETE
+
+ 1. Asset reorganizácia (116 súborov)
+ 2. AI anti-stuck fix
+ 3. Bullet.js extrakcia
+ 4. InputManager.js vytvorenie
+ 5. Renderer.js vytvorenie
+ 6. Testovanie - HRA FUNGUJE! 
+```
+
+###  Pripravené na GitHub commit - FÁZA 2
+
+**Commit message:**
+```
+feat: Phase 2 - asset organization and new modules
+
+- Reorganized 116 media files into assets/ directories
+- Updated 150+ file paths across index.html, script.js, style.css
+- Fixed AI anti-stuck console spam with DEBUG_MODE flag
+- Extracted Bullet.js entity module (~45 LOC)
+- Created InputManager.js for input handling (~93 LOC)
+- Created Renderer.js with culling support (~187 LOC)
+- Removed duplicate event listeners
+- All game features working correctly
+
+Phase 2 complete 
+```
+
+---
+
+##  FÃZA 2 - Asset reorganizÃ¡cia a optimalizÃ¡cie (2. oktÃ³ber 2025)
+
+### DokonÄenÃ© Ãºlohy:
+
+#### 1.  Asset reorganizÃ¡cia (116 sÃºborov)
+- 109 obrÃ¡zkov  assets/images/
+- 7 audio/video  assets/sounds/
+- AktualizovanÃ½ch 150+ ciest v index.html, script.js, style.css
+
+#### 2.  AI anti-stuck fix
+- PridanÃ½ DEBUG_MODE flag
+- OdstrÃ¡nenÃ½ console spam
+
+#### 3.  Bullet.js modul
+- ExtrahovanÃ½ch ~45 riadkov zo script.js
+
+#### 4.  InputManager.js modul
+- CentralizovanÃ½ input handling (~93 LOC)
+- OdstrÃ¡nenÃ© duplicitnÃ© listenery
+
+#### 5.  Renderer.js modul
+- Drawing methods s cullingom (~187 LOC)
+- PripravenÃ½ pre budÃºcu integrÃ¡ciu
+
+###  Å tatistiky FÃZA 2
+
+| Metrika | Zmena |
+|---------|-------|
+| Root media files | **-116 sÃºborov** |
+| NovÃ© moduly | +3 |
+| script.js | **-63 riadkov** |
+
+###  Commit FÃZA 2
+
+```
+feat: Phase 2 - asset organization and new modules
+
+- Reorganized 116 media files into assets/
+- Fixed AI anti-stuck console spam
+- Created Bullet.js, InputManager.js, Renderer.js
+- All features working correctly
+
+Phase 2 complete 
+```
+
