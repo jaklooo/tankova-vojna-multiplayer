@@ -13,6 +13,11 @@ let playerName = ''; // Player's chosen name
 // --- DEBUG & DEVELOPMENT ---
 const DEBUG_MODE = false; // Set to true to enable AI debugging logs
 
+// --- CHEAT CODE SYSTEM ---
+let cheatCodeBuffer = '';
+const CHEAT_CODE = '090599';
+let cheatModeActive = false;
+
 // --- TEAM MANAGEMENT VARIABLES ---
 let selectedGameMode = 'all-vs-all';
 let playerTeam = null;
@@ -868,6 +873,67 @@ function updateMapVotingDisplay(mapVotes) {
         handleMultiplayerRoundEnd(data);
     });
     
+    // Handle all-vs-all round ending (not match end, just round end)
+    socket.on('all-vs-all-round-end', (data) => {
+        console.log('All-vs-all round ended:', data);
+        handleAllVsAllRoundEnd(data);
+    });
+    
+    // Handle all-vs-all match ending (someone won 3 rounds)
+    socket.on('all-vs-all-match-end', (data) => {
+        console.log('All-vs-all match ended:', data);
+        handleAllVsAllMatchEnd(data);
+    });
+    
+    // Handle next round starting
+    socket.on('next-round-starting', (data) => {
+        console.log('Next round starting:', data);
+        handleNextRoundStarting(data);
+    });
+    
+    // Handle rematch accepted (all players voted yes)
+    socket.on('rematch-accepted', () => {
+        console.log('✅ Rematch accepted by all players');
+        const matchScreen = document.getElementById('all-vs-all-match-screen');
+        if (matchScreen) {
+            matchScreen.remove();
+        }
+        showNotification('Všetci hráči súhlasili s odvetou! Začíname nový match...', 'success', 3000);
+    });
+    
+    // Handle rematch declined (someone voted no)
+    socket.on('rematch-declined', (data) => {
+        console.log('❌ Rematch declined by', data.playerName);
+        
+        // Show popup with return button
+        showRematchDeclinedPopup(data.playerName, 'odmietol odvetu');
+    });
+    
+    // Handle player leaving during rematch vote
+    socket.on('player-left-rematch-vote', (data) => {
+        console.log('❌ Player left during rematch vote:', data.playerName);
+        
+        // Show popup with return button
+        showRematchDeclinedPopup(data.playerName, 'sa odpojil');
+    });
+    
+    // Handle rematch vote update (show progress)
+    socket.on('rematch-vote-update', (data) => {
+        console.log('📊 Rematch vote update:', data);
+        const statusEl = document.getElementById('rematch-status');
+        if (statusEl) {
+            statusEl.innerHTML = `Hlasovanie: ${data.voted}/${data.total} hráčov hlasovalo<br>
+                <small>Hlasovali: ${data.votedPlayers.join(', ')}</small>`;
+            statusEl.style.color = '#3498db';
+        }
+    });
+    
+    // Handle forced return to lobby - just close any popups
+    socket.on('force-return-to-lobby', () => {
+        console.log('🔙 Server requested return to lobby');
+        // Popup is already shown, server just confirms
+    });
+    
     // Handle player disconnection during game
     socket.on('player-disconnected', (data) => {
         console.log('Player disconnected:', data);
@@ -1671,6 +1737,12 @@ function updateMapSelection(mapId) {
 function startMultiplayerGame(data) {
     console.log('Začínam multiplayer hru:', data);
     
+    // Hide any round end screens from previous round
+    const roundScreen = document.getElementById('all-vs-all-round-screen');
+    if (roundScreen) {
+        roundScreen.remove();
+    }
+    
     // Set multiplayer mode
     isMultiplayer = true;
     
@@ -1856,6 +1928,62 @@ document.querySelectorAll('.pause-exit-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         returnToMainMenu();
     });
+});
+
+// --- CHEAT CODE LISTENER ---
+document.addEventListener('keydown', (event) => {
+    // Only listen during gameplay
+    if (gameState && gameState.currentScreen === 'game' && !gameState.roundOver) {
+        // Add digit to buffer
+        if (event.key >= '0' && event.key <= '9') {
+            cheatCodeBuffer += event.key;
+            
+            // Keep only last 6 characters
+            if (cheatCodeBuffer.length > 6) {
+                cheatCodeBuffer = cheatCodeBuffer.slice(-6);
+            }
+            
+            // Check if cheat code matches
+            if (cheatCodeBuffer === CHEAT_CODE) {
+                cheatModeActive = !cheatModeActive; // Toggle cheat mode
+                cheatCodeBuffer = ''; // Reset buffer
+                
+                // Show notification
+                if (cheatModeActive) {
+                    console.log('🔥 CHEAT MODE ACTIVATED - ONE HIT KILL! 🔥');
+                    showNotification('🔥 CHEAT MODE: ONE HIT KILL ACTIVE! 🔥', 'success', 3000);
+                    
+                    // Add visual indicator
+                    const indicator = document.createElement('div');
+                    indicator.id = 'cheat-indicator';
+                    indicator.style.cssText = `
+                        position: fixed;
+                        top: 10px;
+                        right: 10px;
+                        background: rgba(255, 0, 0, 0.8);
+                        color: white;
+                        padding: 10px 20px;
+                        border-radius: 5px;
+                        font-family: 'Press Start 2P', monospace;
+                        font-size: 0.8em;
+                        z-index: 10000;
+                        animation: pulse 1s infinite;
+                    `;
+                    indicator.textContent = '🔥 CHEAT ACTIVE 🔥';
+                    document.body.appendChild(indicator);
+                } else {
+                    console.log('❌ CHEAT MODE DEACTIVATED');
+                    showNotification('Cheat mode deactivated', 'info', 2000);
+                    
+                    // Remove visual indicator
+                    const indicator = document.getElementById('cheat-indicator');
+                    if (indicator) {
+                        indicator.remove();
+                    }
+                }
+            }
+        }
+    }
 });
 
 // Pause key handling (P key and Escape)
@@ -2527,8 +2655,16 @@ class Tank {
     }
 
     takeDamage(incomingDamage, attacker) { // Added attacker parameter
-        const damageReduction = Math.min(this.armor / 100, 0.8);
-        const actualDamage = incomingDamage * (1 - damageReduction);
+        // CHEAT MODE: One-hit-kill if attacker is player and cheat is active
+        let actualDamage;
+        if (cheatModeActive && attacker === gameState.player) {
+            actualDamage = this.health; // Kill instantly
+            console.log('🔥 CHEAT KILL:', this.playerId || 'enemy');
+        } else {
+            const damageReduction = Math.min(this.armor / 100, 0.8);
+            actualDamage = incomingDamage * (1 - damageReduction);
+        }
+        
         this.health -= actualDamage;
         // Add hit effect at tank's center
         gameState.hitEffects.push(new HitEffect(this.x + this.width / 2, this.y + this.height / 2));
@@ -2572,8 +2708,9 @@ class Tank {
         if (this.health <= 0) {
             this.health = 0;
             
-            // Send death event to other players (multiplayer) - only if this tank is controlled by current player  
-            if (isMultiplayer && socket && this.playerId && this.playerId === socket.id) {
+            // Send death event to server in multiplayer mode for ANY player death
+            if (isMultiplayer && socket && this.playerId) {
+                console.log(`💀 Sending player-death for ${this.playerId}`);
                 socket.emit('player-death', {
                     playerId: this.playerId
                 });
@@ -6360,6 +6497,51 @@ function handleMultiplayerRoundEnd(data) {
     }
 }
 
+// Handle all-vs-all round ending (not match, just round)
+function handleAllVsAllRoundEnd(data) {
+    console.log('Handling all-vs-all round end:', data);
+    
+    // Stop game
+    gameState.roundOver = true;
+    
+    // Determine if current player won this round
+    const isRoundWinner = data.roundWinner === socket?.id;
+    const roundWinnerName = data.roundWinnerName || 'Niekto';
+    
+    // Show round end screen with score
+    showAllVsAllRoundEndScreen(isRoundWinner, roundWinnerName, data);
+}
+
+// Handle all-vs-all match ending (someone won 3 rounds)
+function handleAllVsAllMatchEnd(data) {
+    console.log('Handling all-vs-all match end:', data);
+    
+    // Stop game
+    gameState.gameOver = true;
+    
+    // Determine if current player won the match
+    const isMatchWinner = data.matchWinner === socket?.id;
+    const matchWinnerName = data.matchWinnerName || 'Niekto';
+    
+    // Show match end screen with rematch option
+    showAllVsAllMatchEndScreen(isMatchWinner, matchWinnerName, data);
+}
+
+// Handle next round starting notification
+function handleNextRoundStarting(data) {
+    console.log('🔄 Next round starting:', data);
+    
+    // Hide round end screen
+    const roundScreen = document.getElementById('all-vs-all-round-screen');
+    if (roundScreen) {
+        roundScreen.style.display = 'none';
+    }
+    
+    // Reset flags - startMultiplayerGame will be called by game-start event
+    gameState.roundOver = false;
+    gameState.gameOver = false;
+}
+
 // Show multiplayer end game screen
 function showMultiplayerEndScreen(message, isWinner, data) {
     // Create end screen overlay
@@ -6457,6 +6639,329 @@ function handleBackToLobby() {
         endScreen.style.display = 'none';
     }
     showScreen('lobby');
+}
+
+// Show all-vs-all round end screen
+function showAllVsAllRoundEndScreen(isWinner, winnerName, data) {
+    let roundScreen = document.getElementById('all-vs-all-round-screen');
+    if (!roundScreen) {
+        roundScreen = document.createElement('div');
+        roundScreen.id = 'all-vs-all-round-screen';
+        roundScreen.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            color: white;
+            font-family: 'Roboto', 'Arial', sans-serif;
+        `;
+        document.body.appendChild(roundScreen);
+    }
+    
+    // Build round end content with scores
+    let scoresHTML = '<div style="margin: 30px 0; font-size: 1.2em;">';
+    scoresHTML += '<h3 style="font-family: \'Press Start 2P\', monospace; margin-bottom: 20px; font-size: 1em;">SKÓRE KÔL:</h3>';
+    for (const [playerId, wins] of Object.entries(data.roundWins)) {
+        // Use player list from server data
+        const player = data.players?.find(p => p.id === playerId);
+        const playerName = player?.name || 'Unknown';
+        const isCurrentPlayer = playerId === socket?.id;
+        scoresHTML += `<p style="margin: 8px 0; ${isCurrentPlayer ? 'color: #f1c40f; font-weight: bold;' : ''}">
+            ${playerName}: ${wins} ${wins === 1 ? 'kolo' : wins < 5 ? 'kolá' : 'kôl'}
+        </p>`;
+    }
+    scoresHTML += '</div>';
+    
+    roundScreen.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+            <h1 style="font-family: 'Press Start 2P', 'Courier New', monospace; font-size: 2.5em; margin-bottom: 20px; color: ${isWinner ? '#27ae60' : '#e74c3c'}; line-height: 1.6;">
+                ${isWinner ? '🎉 VYHRAL SI KOLO ' + data.round + '! 🎉' : '💔 PREHRAL SI KOLO ' + data.round}
+            </h1>
+            <p style="font-size: 1.5em; margin-bottom: 20px;">
+                Víťaz kola: <span style="color: #f1c40f; font-weight: bold;">${winnerName}</span>
+            </p>
+            
+            ${scoresHTML}
+            
+            <div id="round-countdown" style="margin-top: 40px; font-size: 2em; color: #3498db; font-family: 'Press Start 2P', monospace;">
+                Ďalšie kolo o <span id="countdown-number" style="color: #f1c40f;">10</span> sekúnd
+            </div>
+        </div>
+    `;
+    
+    // Countdown timer
+    let countdown = 10;
+    const countdownEl = document.getElementById('countdown-number');
+    const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdownEl) {
+            countdownEl.textContent = countdown;
+        }
+        if (countdown <= 0) {
+            clearInterval(countdownInterval);
+        }
+    }, 1000);
+    
+    roundScreen.style.display = 'flex';
+}
+
+// Show all-vs-all match end screen (with rematch option)
+function showAllVsAllMatchEndScreen(isWinner, winnerName, data) {
+    let matchScreen = document.getElementById('all-vs-all-match-screen');
+    if (!matchScreen) {
+        matchScreen = document.createElement('div');
+        matchScreen.id = 'all-vs-all-match-screen';
+        matchScreen.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            color: white;
+            font-family: 'Roboto', 'Arial', sans-serif;
+        `;
+        document.body.appendChild(matchScreen);
+    }
+    
+    // Build final scores
+    let finalScoresHTML = '<div style="margin: 30px 0; font-size: 1.2em;">';
+    finalScoresHTML += '<h3 style="font-family: \'Press Start 2P\', monospace; margin-bottom: 20px; font-size: 1em;">FINÁLNE SKÓRE:</h3>';
+    for (const [playerId, wins] of Object.entries(data.roundWins)) {
+        // Use player list from server data
+        const player = data.players?.find(p => p.id === playerId);
+        const playerName = player?.name || 'Unknown';
+        const isCurrentPlayer = playerId === socket?.id;
+        const isMatchWinner = playerId === data.matchWinner;
+        finalScoresHTML += `<p style="margin: 8px 0; ${isMatchWinner ? 'color: #27ae60; font-weight: bold; font-size: 1.3em;' : isCurrentPlayer ? 'color: #f1c40f; font-weight: bold;' : ''}">
+            ${isMatchWinner ? '👑 ' : ''}${playerName}: ${wins} ${wins === 1 ? 'kolo' : wins < 5 ? 'kolá' : 'kôl'}
+        </p>`;
+    }
+    finalScoresHTML += '</div>';
+    
+    matchScreen.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+            <h1 style="font-family: 'Press Start 2P', 'Courier New', monospace; font-size: 3em; margin-bottom: 30px; color: ${isWinner ? '#27ae60' : '#e74c3c'}; line-height: 1.6;">
+                ${isWinner ? '🏆 VYHRAL SI MATCH! 🏆' : '😢 PREHRAL SI MATCH'}
+            </h1>
+            <p style="font-size: 1.8em; margin-bottom: 20px; color: #f1c40f;">
+                Celkový víťaz: <span style="font-weight: bold;">${winnerName}</span>
+            </p>
+            <p style="font-size: 1.2em; margin-bottom: 20px; color: #bbb;">
+                Po ${data.totalRounds} kolách
+            </p>
+            
+            ${finalScoresHTML}
+            
+            <div id="rematch-status" style="margin-top: 40px; font-size: 1.1em; color: #3498db;">
+                Čaká sa na rozhodnutie ostatných hráčov...
+            </div>
+            
+            <div style="margin-top: 30px;">
+                <button onclick="handleRematch()" id="rematch-btn" style="
+                    font-family: 'Roboto', 'Arial', sans-serif;
+                    font-size: 1.2em;
+                    font-weight: 600;
+                    padding: 18px 35px;
+                    margin: 10px;
+                    background: #27ae60;
+                    color: white;
+                    border: none;
+                    cursor: pointer;
+                    border-radius: 10px;
+                ">
+                    ODVETA
+                </button>
+                <button onclick="handleDeclineRematch()" id="decline-rematch-btn" style="
+                    font-family: 'Roboto', 'Arial', sans-serif;
+                    font-size: 1.2em;
+                    font-weight: 600;
+                    padding: 18px 35px;
+                    margin: 10px;
+                    background: #e74c3c;
+                    color: white;
+                    border: none;
+                    cursor: pointer;
+                    border-radius: 10px;
+                ">
+                    SPÄŤ DO MENU
+                </button>
+            </div>
+        </div>
+    `;
+    
+    matchScreen.style.display = 'flex';
+}
+
+// Handle rematch button
+function handleRematch() {
+    if (socket) {
+        socket.emit('rematch-vote', { vote: true });
+    }
+    document.getElementById('rematch-btn').disabled = true;
+    document.getElementById('decline-rematch-btn').disabled = true;
+    document.getElementById('rematch-status').textContent = 'Čakáš na ostatných hráčov...';
+}
+
+// Handle decline rematch button
+function handleDeclineRematch() {
+    if (socket) {
+        socket.emit('rematch-vote', { vote: false });
+    }
+    document.getElementById('rematch-btn').disabled = true;
+    document.getElementById('decline-rematch-btn').disabled = true;
+    document.getElementById('rematch-status').textContent = 'Odmietol si odvetu, vraciame sa do menu...';
+}
+
+// Show popup when rematch is declined or player leaves
+function showRematchDeclinedPopup(playerName, reason) {
+    // Hide match screen
+    const matchScreen = document.getElementById('all-vs-all-match-screen');
+    if (matchScreen) {
+        matchScreen.remove();
+    }
+    
+    // Create popup overlay
+    let popup = document.getElementById('rematch-declined-popup');
+    if (!popup) {
+        popup = document.createElement('div');
+        popup.id = 'rematch-declined-popup';
+        popup.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10001;
+        `;
+        document.body.appendChild(popup);
+    }
+    
+    popup.innerHTML = `
+        <div style="
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            padding: 50px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 2px solid #e74c3c;
+        ">
+            <h1 style="
+                font-family: 'Press Start 2P', monospace;
+                color: #e74c3c;
+                font-size: 2em;
+                margin-bottom: 30px;
+                line-height: 1.5;
+            ">
+                ❌ ODVETA ZRUŠENÁ
+            </h1>
+            <p style="
+                font-family: 'Roboto', Arial, sans-serif;
+                color: white;
+                font-size: 1.5em;
+                margin-bottom: 40px;
+            ">
+                Hráč <strong style="color: #f1c40f;">${playerName}</strong> ${reason}
+            </p>
+            <button id="return-to-menu-btn" style="
+                font-family: 'Roboto', Arial, sans-serif;
+                font-size: 1.3em;
+                font-weight: 600;
+                padding: 20px 40px;
+                background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+                color: white;
+                border: none;
+                border-radius: 10px;
+                cursor: pointer;
+                box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+                transition: all 0.3s ease;
+            ">
+                NÁVRAT DO MENU
+            </button>
+        </div>
+    `;
+    
+    popup.style.display = 'flex';
+    
+    // Add click event listener to button
+    setTimeout(() => {
+        const btn = document.getElementById('return-to-menu-btn');
+        if (btn) {
+            btn.addEventListener('click', returnToMenuFromPopup);
+            btn.addEventListener('mouseover', function() {
+                this.style.transform = 'translateY(-2px)';
+                this.style.boxShadow = '0 6px 20px rgba(231, 76, 60, 0.6)';
+            });
+            btn.addEventListener('mouseout', function() {
+                this.style.transform = 'translateY(0)';
+                this.style.boxShadow = '0 4px 15px rgba(231, 76, 60, 0.4)';
+            });
+        }
+    }, 0);
+}
+
+// Function to return to menu from popup
+function returnToMenuFromPopup() {
+    console.log('🔙 Returning to main menu from popup...');
+    
+    // Remove popup
+    const popup = document.getElementById('rematch-declined-popup');
+    if (popup) {
+        popup.remove();
+        console.log('✅ Popup removed');
+    }
+    
+    // Remove any other game screens
+    const roundScreen = document.getElementById('all-vs-all-round-screen');
+    if (roundScreen) {
+        roundScreen.remove();
+    }
+    const matchScreen = document.getElementById('all-vs-all-match-screen');
+    if (matchScreen) {
+        matchScreen.remove();
+    }
+    
+    // Stop game loop
+    if (typeof isPaused !== 'undefined') {
+        isPaused = true;
+    }
+    
+    // Clear game state
+    gameState.isMultiplayer = false;
+    gameState.gameOver = true;
+    gameState.roundOver = true;
+    gameState.currentScreen = 'mainMenu';
+    
+    // Clear tanks
+    multiplayerTanks.clear();
+    
+    // Leave room
+    if (socket) {
+        socket.emit('leave-room');
+        console.log('📤 Left room');
+    }
+    
+    // Return to menu
+    console.log('📺 Showing menu screen...');
+    showScreen('mainMenu');
+    showNotification('Vrátenie do hlavného menu', 'info', 2000);
+    console.log('✅ Menu should be visible now');
 }
 
 function showEliminationMessage(data) {
@@ -7008,6 +7513,14 @@ function updateJoinButtonsState() {
 function resetGameState() {
     // Preserve coins
     const savedCoins = gameState.playerCoins;
+    
+    // Reset cheat mode
+    cheatModeActive = false;
+    cheatCodeBuffer = '';
+    const indicator = document.getElementById('cheat-indicator');
+    if (indicator) {
+        indicator.remove();
+    }
     
     // Reset all game variables except coins
     gameState.player = null;

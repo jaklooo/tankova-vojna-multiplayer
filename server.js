@@ -853,13 +853,60 @@ io.on('connection', (socket) => {
     // Handle player death
     socket.on('player-death', (deathData) => {
         const room = gameRooms.get(socket.currentRoom);
-        if (room && room.gameState === 'playing') {
+        
+        console.log('🎯 player-death event received:', {
+            playerId: deathData.playerId,
+            roomId: socket.currentRoom,
+            roomExists: !!room,
+            gameState: room?.gameState
+        });
+        
+        if (room && (room.gameState === 'playing' || room.gameState === globalStateManager.gameStates.PLAYING)) {
+            const player = room.players.find(p => p.id === deathData.playerId);
+            
+            console.log('🔍 Checking alive players:', {
+                alivePlayers: Array.from(room.alivePlayers),
+                deadPlayerId: deathData.playerId,
+                isAlive: room.alivePlayers.has(deathData.playerId)
+            });
+            
             // Broadcast death to all players in room
             io.to(room.id).emit('player-death', {
                 playerId: deathData.playerId,
                 killerId: socket.id,
                 timestamp: Date.now()
             });
+            
+            // Check if player is already eliminated
+            if (room.alivePlayers.has(deathData.playerId)) {
+                console.log('Player died, marking as eliminated:', deathData.playerId);
+                
+                try {
+                    // Mark player as eliminated
+                    room.eliminatePlayer(deathData.playerId);
+                    
+                    // Notify all players about elimination
+                    io.to(room.id).emit('player-eliminated', {
+                        playerId: deathData.playerId,
+                        playerName: player?.name || 'Unknown',
+                        team: player?.team,
+                        eliminationTime: Date.now(),
+                        remainingPlayers: room.alivePlayers.size,
+                        timestamp: Date.now()
+                    });
+
+                    // Check if round/game should end
+                    const gameEndResult = globalStateManager.checkEndCondition(room);
+                    if (gameEndResult && gameEndResult.shouldEnd) {
+                        console.log('Game end condition met after death:', gameEndResult);
+                        handleGameEnd(room, gameEndResult);
+                    } else {
+                        console.log(`Game continues - ${room.alivePlayers.size} players remaining`);
+                    }
+                } catch (error) {
+                    console.error('Error handling player death:', error);
+                }
+            }
         }
     });
 
@@ -970,6 +1017,123 @@ io.on('connection', (socket) => {
         io.to(room.id).emit('game-restart');
     });
 
+    // Handle player leaving room voluntarily
+    socket.on('leave-room', () => {
+        console.log('🚪 Player leaving room:', socket.id);
+        
+        if (socket.currentRoom) {
+            const room = gameRooms.get(socket.currentRoom);
+            if (room) {
+                const player = room.players.find(p => p.id === socket.id);
+                
+                // Remove player from room
+                room.removePlayer(socket.id);
+                
+                // Notify others
+                io.to(room.id).emit('player-left', {
+                    playerId: socket.id,
+                    playerName: player?.name || 'Unknown'
+                });
+                
+                // Clean up if room is empty
+                if (room.isEmpty()) {
+                    console.log('Room empty after leave, deleting:', room.id);
+                    gameRooms.delete(room.id);
+                }
+            }
+            
+            // Clear current room reference
+            socket.currentRoom = null;
+            socket.leave(socket.currentRoom);
+        }
+    });
+
+    // Handle rematch voting for all-vs-all matches
+    socket.on('rematch-vote', (data) => {
+        console.log('🗳️ Rematch vote received:', socket.id, 'vote:', data.vote);
+        
+        const room = gameRooms.get(socket.currentRoom);
+        if (!room) {
+            console.log('Room not found for rematch vote');
+            return;
+        }
+        
+        // Initialize rematch voting if not started
+        if (!room.rematchVotes) {
+            room.rematchVotes = new Map();
+            room.rematchVoteStartTime = Date.now();
+        }
+        
+        // Record vote
+        room.rematchVotes.set(socket.id, data.vote);
+        
+        // If anyone votes no, cancel rematch
+        if (data.vote === false) {
+            console.log('❌ Player declined rematch');
+            
+            const decliningPlayer = room.players.find(p => p.id === socket.id);
+            
+            // Notify all players that rematch was declined (popup will show on client)
+            io.to(room.id).emit('rematch-declined', {
+                playerName: decliningPlayer?.name || 'Niekto'
+            });
+            
+            // Clean up room state immediately
+            room.rematchVotes = null;
+            room.rematchVoteStartTime = null;
+            room.gameState = globalStateManager.gameStates.WAITING;
+            
+            return;
+        }
+        
+        // Check if all players have voted yes
+        const allPlayersVoted = room.players.every(player => 
+            room.rematchVotes.has(player.id)
+        );
+        
+        const allVotedYes = room.players.every(player => 
+            room.rematchVotes.get(player.id) === true
+        );
+        
+        console.log(`📊 Rematch votes: ${room.rematchVotes.size}/${room.players.length}`);
+        
+        if (allPlayersVoted && allVotedYes) {
+            console.log('✅ All players voted for rematch, restarting match!');
+            
+            // Reset match state
+            room.currentRound = 1; // Start from round 1, not 0
+            room.roundWins = {};
+            room.players.forEach(player => {
+                room.roundWins[player.id] = 0;
+            });
+            
+            // Clean up voting
+            room.rematchVotes = null;
+            room.rematchVoteStartTime = null;
+            
+            // Notify players match is restarting
+            io.to(room.id).emit('rematch-accepted');
+            
+            // Start new match after 3 seconds
+            setTimeout(() => {
+                startGame(room);
+            }, 3000);
+        } else {
+            // Update other players about voting progress
+            const votedCount = room.rematchVotes.size;
+            const totalCount = room.players.length;
+            
+            io.to(room.id).emit('rematch-vote-update', {
+                voted: votedCount,
+                total: totalCount,
+                votedPlayers: Array.from(room.rematchVotes.keys()).map(id => {
+                    const player = room.players.find(p => p.id === id);
+                    return player?.name || 'Unknown';
+                })
+            });
+        }
+    });
+
     // Handle disconnection with improved game state management
     socket.on('disconnect', () => {
         console.log('Hráč sa odpojil:', socket.id);
@@ -980,6 +1144,21 @@ io.on('connection', (socket) => {
                 const disconnectedPlayer = room.players.find(p => p.id === socket.id);
                 const wasHost = room.hostId === socket.id;
                 const wasPlaying = room.gameState === globalStateManager.gameStates.PLAYING;
+                
+                // Handle disconnection during rematch voting
+                if (room.rematchVotes) {
+                    console.log('❌ Player disconnected during rematch voting');
+                    
+                    // Notify remaining players (popup will show on client)
+                    io.to(room.id).emit('player-left-rematch-vote', {
+                        playerName: disconnectedPlayer?.name || 'Niekto'
+                    });
+                    
+                    // Clean up voting state immediately
+                    room.rematchVotes = null;
+                    room.rematchVoteStartTime = null;
+                    room.gameState = globalStateManager.gameStates.WAITING;
+                }
                 
                 // Handle mid-game disconnection
                 if (wasPlaying && room.alivePlayers.has(socket.id)) {
@@ -1044,6 +1223,14 @@ io.on('connection', (socket) => {
 
 function startGame(room) {
     room.gameState = 'playing';
+    
+    // Initialize alive players - ALL players start alive
+    room.alivePlayers.clear();
+    room.players.forEach(player => {
+        room.alivePlayers.add(player.id);
+    });
+    
+    console.log('🎮 Game started with alive players:', Array.from(room.alivePlayers));
     
     // Generate shared game data for all players
     const sharedGameData = generateSharedGameData(room);
@@ -1330,48 +1517,93 @@ function handleTeamGameEnd(room, endResult) {
 }
 
 function handleAllVsAllEnd(room, endResult) {
-    const endData = globalStateManager.getEndGameData(room, endResult);
-    room.gameState = globalStateManager.gameStates.ENDED;
+    // Track round winner
+    const winnerId = endResult.winner;
+    const winnerPlayer = room.players.find(p => p.id === winnerId);
     
-    setTimeout(() => {
-        io.to(room.id).emit('all-vs-all-end', endData);
-    }, 2000); // Wait 2 seconds before showing end screen
+    // Initialize round wins tracking if not exists
+    if (!room.roundWins) {
+        room.roundWins = {};
+        room.players.forEach(p => {
+            room.roundWins[p.id] = 0;
+        });
+    }
+    
+    // Increment winner's round count
+    if (winnerId && room.roundWins[winnerId] !== undefined) {
+        room.roundWins[winnerId]++;
+    }
+    
+    console.log('🏆 All-vs-all round ended. Round wins:', room.roundWins);
+    
+    // Check if someone won 3 rounds (match winner)
+    const maxWins = Math.max(...Object.values(room.roundWins));
+    const matchWinnerId = Object.keys(room.roundWins).find(id => room.roundWins[id] >= 3);
+    
+    if (matchWinnerId) {
+        // Match is over - someone won 3 rounds
+        const matchWinner = room.players.find(p => p.id === matchWinnerId);
+        room.gameState = globalStateManager.gameStates.ENDED;
+        
+        const endData = {
+            type: 'all-vs-all-match-end',
+            matchWinner: matchWinnerId,
+            matchWinnerName: matchWinner?.name,
+            roundWins: room.roundWins,
+            totalRounds: room.currentRound,
+            ranking: endResult.data?.finalRanking || [],
+            players: room.players.map(p => ({ id: p.id, name: p.name })) // Add player names
+        };
+        
+        console.log('🎊 Match winner:', matchWinner?.name, 'with', room.roundWins[matchWinnerId], 'round wins');
+        
+        setTimeout(() => {
+            io.to(room.id).emit('all-vs-all-match-end', endData);
+        }, 2000);
+    } else {
+        // Round ended, but match continues
+        room.gameState = globalStateManager.gameStates.ROUND_END;
+        
+        const roundEndData = {
+            type: 'all-vs-all-round-end',
+            roundWinner: winnerId,
+            roundWinnerName: winnerPlayer?.name,
+            round: room.currentRound, // Show current round number (1, 2, 3...)
+            roundWins: room.roundWins,
+            nextRoundIn: 10, // seconds
+            players: room.players.map(p => ({ id: p.id, name: p.name })) // Add player names
+        };
+        
+        console.log('📢 Round', room.currentRound, 'winner:', winnerPlayer?.name);
+        
+        // Increment AFTER sending data
+        room.currentRound++;
+        
+        io.to(room.id).emit('all-vs-all-round-end', roundEndData);
+        
+        // Start next round after 10 seconds
+        setTimeout(() => {
+            startNextRound(room);
+        }, 10000);
+    }
 }
 
 function startNextRound(room) {
+    console.log('🔄 Starting next round for room:', room.id);
+    
     // Validate state transition
     if (!globalStateManager.canTransitionTo(room.gameState, globalStateManager.gameStates.PLAYING)) {
         console.error('Invalid state transition for next round');
         return;
     }
     
-    // Reset for next round
+    // Reset for next round (this clears alivePlayers and repopulates it)
     room.resetForNextRound();
-    room.gameState = globalStateManager.gameStates.PLAYING;
     
-    // Notify players that next round is starting
-    io.to(room.id).emit('next-round-starting', {
-        round: room.currentRound,
-        countdown: 3
-    });
-
-    // Start countdown
-    let countdown = 3;
-    const countdownInterval = setInterval(() => {
-        countdown--;
-        if (countdown > 0) {
-            io.to(room.id).emit('next-round-starting', {
-                round: room.currentRound,
-                countdown: countdown
-            });
-        } else {
-            clearInterval(countdownInterval);
-            // Start the actual round
-            io.to(room.id).emit('round-start', {
-                round: room.currentRound
-            });
-        }
-    }, 1000);
+    console.log('🎮 Restarting game for round', room.currentRound);
+    
+    // Simply call startGame again - it will handle everything
+    startGame(room);
 }
 
 // Start server
