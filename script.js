@@ -864,7 +864,7 @@ function updateMapVotingDisplay(mapVotes) {
     // Handle team match ending
     socket.on('team-match-end', (data) => {
         console.log('Team match ended:', data);
-        handleMultiplayerGameEnd(data);
+        handleTeamMatchEnd(data);
     });
     
     // Handle team round ending
@@ -1737,10 +1737,22 @@ function updateMapSelection(mapId) {
 function startMultiplayerGame(data) {
     console.log('Začínam multiplayer hru:', data);
     
-    // Hide any round end screens from previous round
+    // Hide any round/match end screens from previous rounds
     const roundScreen = document.getElementById('all-vs-all-round-screen');
     if (roundScreen) {
         roundScreen.remove();
+    }
+    const teamRoundScreen = document.getElementById('team-round-screen');
+    if (teamRoundScreen) {
+        teamRoundScreen.remove();
+    }
+    const matchScreen = document.getElementById('all-vs-all-match-screen');
+    if (matchScreen) {
+        matchScreen.remove();
+    }
+    const teamMatchScreen = document.getElementById('team-match-screen');
+    if (teamMatchScreen) {
+        teamMatchScreen.remove();
     }
     
     // Set multiplayer mode
@@ -1799,6 +1811,11 @@ function startMultiplayerGame(data) {
     // Clear existing tanks
     multiplayerTanks.clear();
     gameState.enemies = [];
+    gameState.allies = [];
+    
+    // Store my team for later reference
+    const myPlayerData = data.players.find(p => p.id === myPlayerId);
+    const myTeam = myPlayerData?.team || null;
     
     // Create tanks for all players
     data.players.forEach(playerData => {
@@ -1809,10 +1826,15 @@ function startMultiplayerGame(data) {
         }
         
         const isMyPlayer = playerData.id === myPlayerId;
+        const playerTeam = position.team || playerData.team || null;
+        const isAlly = !isMyPlayer && myTeam && playerTeam === myTeam;
         const characterKey = position.character || playerData.selectedCharacter || 'jaccelini';
         
         console.log(`🔧 Creating tank for player ${playerData.id}:`, {
             isMyPlayer,
+            playerTeam,
+            myTeam,
+            isAlly,
             position: { x: position.x, y: position.y },
             tankType: position.tankType,
             character: characterKey
@@ -1823,16 +1845,35 @@ function startMultiplayerGame(data) {
             position.y, 
             position.tankType, 
             isMyPlayer, // isPlayer
-            false, // isAlly
+            isAlly, // isAlly
             characterKey // character from server position data
         );
         tank.playerId = playerData.id;
+        tank.team = playerTeam; // Store team info on tank
         
         if (isMyPlayer) {
             gameState.player = tank;
             // Set player character for UI display
             gameState.selectedPlayerChar = CHARACTERS[characterKey];
+        } else if (isAlly) {
+            // Teammate
+            tank.isMultiplayerOpponent = false;
+            
+            // Add interpolation properties
+            tank.prevX = tank.x;
+            tank.prevY = tank.y;
+            tank.prevAngle = tank.angle;
+            tank.prevTurretAngle = tank.turretAbsoluteAngle;
+            tank.targetX = tank.x;
+            tank.targetY = tank.y;
+            tank.targetAngle = tank.angle;
+            tank.targetTurretAngle = tank.turretAbsoluteAngle;
+            tank.interpolationTime = 0;
+            tank.lastUpdateTime = Date.now();
+            
+            gameState.allies.push(tank);
         } else {
+            // Enemy
             tank.isMultiplayerOpponent = true;
             
             // Add interpolation properties for smooth movement
@@ -4423,10 +4464,11 @@ function update() {
         inputManager.syncKeysToGameState();
     }
 
-    // Interpolate multiplayer opponents for smooth movement
+    // Interpolate multiplayer opponents and allies for smooth movement
     if (isMultiplayer) {
         multiplayerTanks.forEach((tank, playerId) => {
-            if (tank.isMultiplayerOpponent && tank.targetX !== undefined) {
+            // Update all tanks except the player
+            if (!tank.isPlayer && tank.targetX !== undefined) {
                 const now = Date.now();
                 tank.interpolationTime += 16; // Assume ~60fps (16ms per frame)
                 
@@ -6476,25 +6518,18 @@ function handleMultiplayerGameEnd(data) {
 
 // Handle multiplayer round ending (for team mode)
 function handleMultiplayerRoundEnd(data) {
-    console.log('Handling multiplayer round end:', data);
+    console.log('Handling team round end:', data);
     
-    // Pause game temporarily
+    // Stop game
     gameState.roundOver = true;
     
-    // Show round result
-    const roundMessage = `KONIEC KOLA ${data.round}\\n${data.winnerTeam.toUpperCase()} VYHRAL!\\nSkóre: Modrý ${data.scores.blue} - ${data.scores.red} Červený`;
+    // Determine if current player's team won this round
+    const myPlayerData = data.players?.find(p => p.id === socket?.id);
+    const myTeam = myPlayerData?.team;
+    const isRoundWinner = data.roundWinnerTeam === myTeam;
     
-    showNotification(roundMessage, 'info', 5000);
-    
-    if (data.matchEnd) {
-        // Match is over, show final results
-        setTimeout(() => {
-            // Will receive 'team-match-end' event
-        }, 3000);
-    } else {
-        // Next round will start automatically
-        showNotification('Ďalšie kolo začne o chvíľu...', 'info', 3000);
-    }
+    // Show team round end screen with score
+    showTeamRoundEndScreen(isRoundWinner, data);
 }
 
 // Handle all-vs-all round ending (not match, just round)
@@ -6525,6 +6560,22 @@ function handleAllVsAllMatchEnd(data) {
     
     // Show match end screen with rematch option
     showAllVsAllMatchEndScreen(isMatchWinner, matchWinnerName, data);
+}
+
+// Handle team match ending
+function handleTeamMatchEnd(data) {
+    console.log('Handling team match end:', data);
+    
+    // Stop game
+    gameState.gameOver = true;
+    
+    // Determine if current player's team won the match
+    const myPlayerData = data.players?.find(p => p.id === socket?.id);
+    const myTeam = myPlayerData?.team;
+    const isMatchWinner = data.matchWinnerTeam === myTeam;
+    
+    // Show team match end screen with rematch option
+    showTeamMatchEndScreen(isMatchWinner, data);
 }
 
 // Handle next round starting notification
@@ -6641,6 +6692,78 @@ function handleBackToLobby() {
     showScreen('lobby');
 }
 
+// Show team round end screen
+function showTeamRoundEndScreen(isWinner, data) {
+    let roundScreen = document.getElementById('team-round-screen');
+    if (!roundScreen) {
+        roundScreen = document.createElement('div');
+        roundScreen.id = 'team-round-screen';
+        roundScreen.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            color: white;
+            font-family: 'Roboto', 'Arial', sans-serif;
+        `;
+        document.body.appendChild(roundScreen);
+    }
+    
+    // Team colors
+    const blueColor = '#3498db';
+    const redColor = '#e74c3c';
+    
+    roundScreen.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+            <h1 style="font-family: 'Press Start 2P', 'Courier New', monospace; font-size: 2.5em; margin-bottom: 20px; color: ${isWinner ? '#27ae60' : '#e74c3c'}; line-height: 1.6;">
+                ${isWinner ? '🎉 VÁŠ TÍM VYHRAL KOLO ' + data.round + '! 🎉' : '💔 VÁŠ TÍM PREHRAL KOLO ' + data.round}
+            </h1>
+            <p style="font-size: 1.5em; margin-bottom: 20px;">
+                Víťaz kola: <span style="color: ${data.roundWinnerTeam === 'blue' ? blueColor : redColor}; font-weight: bold;">${data.roundWinnerTeamName}</span>
+            </p>
+            
+            <div style="margin: 30px 0; font-size: 1.4em;">
+                <h3 style="font-family: 'Press Start 2P', monospace; margin-bottom: 20px; font-size: 1em;">SKÓRE KÔL:</h3>
+                <div style="display: flex; justify-content: center; gap: 60px; margin-top: 30px;">
+                    <div style="text-align: center;">
+                        <p style="font-size: 1.2em; color: ${blueColor}; font-weight: bold; margin-bottom: 10px;">Modrý tím</p>
+                        <p style="font-size: 3em; font-family: 'Press Start 2P', monospace; color: ${blueColor};">${data.roundWins.blue}</p>
+                    </div>
+                    <div style="font-size: 3em; margin-top: 40px;">:</div>
+                    <div style="text-align: center;">
+                        <p style="font-size: 1.2em; color: ${redColor}; font-weight: bold; margin-bottom: 10px;">Červený tím</p>
+                        <p style="font-size: 3em; font-family: 'Press Start 2P', monospace; color: ${redColor};">${data.roundWins.red}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="team-round-countdown" style="margin-top: 40px; font-size: 2em; color: #3498db; font-family: 'Press Start 2P', monospace;">
+                Ďalšie kolo o <span id="team-countdown-number" style="color: #f1c40f;">10</span> sekúnd
+            </div>
+        </div>
+    `;
+    
+    // Start countdown
+    let timeLeft = 10;
+    const countdownInterval = setInterval(() => {
+        timeLeft--;
+        const countdownElem = document.getElementById('team-countdown-number');
+        if (countdownElem) {
+            countdownElem.textContent = timeLeft;
+        }
+        if (timeLeft <= 0) {
+            clearInterval(countdownInterval);
+        }
+    }, 1000);
+}
+
 // Show all-vs-all round end screen
 function showAllVsAllRoundEndScreen(isWinner, winnerName, data) {
     let roundScreen = document.getElementById('all-vs-all-round-screen');
@@ -6710,6 +6833,127 @@ function showAllVsAllRoundEndScreen(isWinner, winnerName, data) {
     }, 1000);
     
     roundScreen.style.display = 'flex';
+}
+
+// Show team match end screen (with rematch option)
+function showTeamMatchEndScreen(isWinner, data) {
+    let matchScreen = document.getElementById('team-match-screen');
+    if (!matchScreen) {
+        matchScreen = document.createElement('div');
+        matchScreen.id = 'team-match-screen';
+        matchScreen.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            color: white;
+            font-family: 'Roboto', 'Arial', sans-serif;
+        `;
+        document.body.appendChild(matchScreen);
+    }
+    
+    // Team colors
+    const blueColor = '#3498db';
+    const redColor = '#e74c3c';
+    const winnerColor = data.matchWinnerTeam === 'blue' ? blueColor : redColor;
+    
+    matchScreen.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+            <h1 style="font-family: 'Press Start 2P', 'Courier New', monospace; font-size: 2.5em; margin-bottom: 20px; color: ${isWinner ? '#27ae60' : '#e74c3c'}; line-height: 1.6;">
+                ${isWinner ? '🏆 VÁŠ TÍM VYHRAL MATCH! 🏆' : '💔 VÁŠ TÍM PREHRAL MATCH'}
+            </h1>
+            <p style="font-size: 1.8em; margin-bottom: 30px;">
+                Víťaz: <span style="color: ${winnerColor}; font-weight: bold;">${data.matchWinnerTeamName}</span>
+            </p>
+            
+            <div style="margin: 30px 0; font-size: 1.4em;">
+                <h3 style="font-family: 'Press Start 2P', monospace; margin-bottom: 20px; font-size: 1em;">KONEČNÉ SKÓRE:</h3>
+                <div style="display: flex; justify-content: center; gap: 60px; margin-top: 30px;">
+                    <div style="text-align: center;">
+                        <p style="font-size: 1.2em; color: ${blueColor}; font-weight: bold; margin-bottom: 10px;">Modrý tím</p>
+                        <p style="font-size: 3em; font-family: 'Press Start 2P', monospace; color: ${blueColor};">${data.roundWins.blue}</p>
+                    </div>
+                    <div style="font-size: 3em; margin-top: 40px;">:</div>
+                    <div style="text-align: center;">
+                        <p style="font-size: 1.2em; color: ${redColor}; font-weight: bold; margin-bottom: 10px;">Červený tím</p>
+                        <p style="font-size: 3em; font-family: 'Press Start 2P', monospace; color: ${redColor};">${data.roundWins.red}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 50px;">
+                <p style="font-size: 1.3em; margin-bottom: 20px;">Chcete hrať odvetu?</p>
+                <div style="display: flex; gap: 20px; justify-content: center;">
+                    <button id="team-rematch-yes" style="
+                        font-family: 'Roboto', 'Arial', sans-serif;
+                        font-size: 1.2em;
+                        font-weight: 600;
+                        padding: 20px 40px;
+                        background: #27ae60;
+                        color: white;
+                        border: none;
+                        cursor: pointer;
+                        border-radius: 10px;
+                        transition: all 0.3s;
+                    ">
+                        ✓ ÁNO
+                    </button>
+                    <button id="team-rematch-no" style="
+                        font-family: 'Roboto', 'Arial', sans-serif;
+                        font-size: 1.2em;
+                        font-weight: 600;
+                        padding: 20px 40px;
+                        background: #e74c3c;
+                        color: white;
+                        border: none;
+                        cursor: pointer;
+                        border-radius: 10px;
+                        transition: all 0.3s;
+                    ">
+                        ✗ NIE
+                    </button>
+                </div>
+                <p id="team-rematch-status" style="margin-top: 20px; font-size: 1.1em; color: #f1c40f;"></p>
+            </div>
+        </div>
+    `;
+    
+    // Add event listeners for rematch buttons
+    setTimeout(() => {
+        const yesBtn = document.getElementById('team-rematch-yes');
+        const noBtn = document.getElementById('team-rematch-no');
+        
+        if (yesBtn) {
+            yesBtn.addEventListener('click', () => {
+                socket.emit('rematch-vote', { vote: true });
+                yesBtn.disabled = true;
+                noBtn.disabled = true;
+                yesBtn.style.opacity = '0.5';
+                noBtn.style.opacity = '0.5';
+                document.getElementById('team-rematch-status').textContent = 'Čaká sa na ostatných hráčov...';
+            });
+        }
+        
+        if (noBtn) {
+            noBtn.addEventListener('click', () => {
+                socket.emit('rematch-vote', { vote: false });
+                yesBtn.disabled = true;
+                noBtn.disabled = true;
+                yesBtn.style.opacity = '0.5';
+                noBtn.style.opacity = '0.5';
+                document.getElementById('team-rematch-status').textContent = 'Odmietli ste odvetu.';
+            });
+        }
+    }, 0);
+    
+    matchScreen.style.display = 'flex';
 }
 
 // Show all-vs-all match end screen (with rematch option)

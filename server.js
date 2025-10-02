@@ -1224,6 +1224,21 @@ io.on('connection', (socket) => {
 function startGame(room) {
     room.gameState = 'playing';
     
+    // Initialize round tracking if this is the first round
+    if (!room.currentRound) {
+        room.currentRound = 1;
+    }
+    if (!room.roundWins) {
+        if (room.teamMode) {
+            room.roundWins = { blue: 0, red: 0 };
+        } else {
+            room.roundWins = {};
+            room.players.forEach(p => {
+                room.roundWins[p.id] = 0;
+            });
+        }
+    }
+    
     // Initialize alive players - ALL players start alive
     room.alivePlayers.clear();
     room.players.forEach(player => {
@@ -1487,32 +1502,70 @@ function handleGameEnd(room, result) {
 }
 
 function handleTeamGameEnd(room, endResult) {
-    const roundResult = globalStateManager.handleRoundEnd(room, endResult);
-    const endData = globalStateManager.getEndGameData(room, endResult, roundResult);
+    // Track round winner team
+    const winnerTeam = endResult.winner; // 'blue' or 'red'
     
-    // Emit round end event with comprehensive data
-    io.to(room.id).emit('team-round-end', {
-        round: roundResult.round,
-        winnerTeam: endResult.winner,
-        scores: roundResult.currentScore,
-        roundEnd: true,
-        endCondition: endResult.condition,
-        matchEnd: roundResult.isMatchEnd
-    });
-
-    if (roundResult.isMatchEnd) {
-        // Match is over
+    // Initialize round wins tracking if not exists
+    if (!room.roundWins) {
+        room.roundWins = {
+            blue: 0,
+            red: 0
+        };
+    }
+    
+    // Increment winner team's round count
+    if (winnerTeam && (winnerTeam === 'blue' || winnerTeam === 'red')) {
+        room.roundWins[winnerTeam]++;
+    }
+    
+    console.log('🏆 Team round ended. Round wins:', room.roundWins);
+    
+    // Check if a team won 3 rounds (match winner)
+    const matchWinnerTeam = room.roundWins.blue >= 3 ? 'blue' : (room.roundWins.red >= 3 ? 'red' : null);
+    
+    if (matchWinnerTeam) {
+        // Match is over - a team won 3 rounds
         room.gameState = globalStateManager.gameStates.ENDED;
+        
+        const endData = {
+            type: 'team-match-end',
+            matchWinnerTeam: matchWinnerTeam,
+            matchWinnerTeamName: matchWinnerTeam === 'blue' ? 'Modrý tím' : 'Červený tím',
+            roundWins: room.roundWins,
+            totalRounds: room.currentRound,
+            players: room.players.map(p => ({ id: p.id, name: p.name, team: p.team }))
+        };
+        
+        console.log('🎊 Match winner:', matchWinnerTeam, 'team with', room.roundWins[matchWinnerTeam], 'round wins');
         
         setTimeout(() => {
             io.to(room.id).emit('team-match-end', endData);
-        }, 3000); // Wait 3 seconds before showing end screen
+        }, 2000);
     } else {
-        // Start next round
+        // Round ended, but match continues
         room.gameState = globalStateManager.gameStates.ROUND_END;
+        
+        const roundEndData = {
+            type: 'team-round-end',
+            roundWinnerTeam: winnerTeam,
+            roundWinnerTeamName: winnerTeam === 'blue' ? 'Modrý tím' : 'Červený tím',
+            round: room.currentRound, // Show current round number (1, 2, 3...)
+            roundWins: room.roundWins,
+            nextRoundIn: 10, // seconds
+            players: room.players.map(p => ({ id: p.id, name: p.name, team: p.team }))
+        };
+        
+        console.log('📢 Round', room.currentRound, 'winner:', winnerTeam, 'team');
+        
+        // Increment AFTER sending data
+        room.currentRound++;
+        
+        io.to(room.id).emit('team-round-end', roundEndData);
+        
+        // Start next round after 10 seconds
         setTimeout(() => {
             startNextRound(room);
-        }, 5000); // Wait 5 seconds before next round
+        }, 10000);
     }
 }
 

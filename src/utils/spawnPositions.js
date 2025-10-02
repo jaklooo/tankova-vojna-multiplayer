@@ -9,13 +9,15 @@ function generatePlayerSpawnPositions(players, arenaWidth, arenaHeight, obstacle
             x: 200,
             y: arenaHeight - 200,
             tankType: players[0].selectedTank || 'purple',
-            character: players[0].selectedCharacter || 'jaccelini'
+            character: players[0].selectedCharacter || 'jaccelini',
+            team: players[0].team || null
         };
         positions[players[1].id] = {
             x: arenaWidth - 200,
             y: 200,
             tankType: players[1].selectedTank || 'purple',
-            character: players[1].selectedCharacter || 'jaccelini'
+            character: players[1].selectedCharacter || 'jaccelini',
+            team: players[1].team || null
         };
     } else if (playerCount === 3) {
         // Free-for-all 3 - triangle formation
@@ -29,7 +31,8 @@ function generatePlayerSpawnPositions(players, arenaWidth, arenaHeight, obstacle
                 x: centerX + Math.cos(angle) * radius,
                 y: centerY + Math.sin(angle) * radius,
                 tankType: players[i].selectedTank || 'purple',
-                character: players[i].selectedCharacter || 'jaccelini'
+                character: players[i].selectedCharacter || 'jaccelini',
+                team: players[i].team || null
             };
         }
     } else if (playerCount === 4) {
@@ -47,7 +50,8 @@ function generatePlayerSpawnPositions(players, arenaWidth, arenaHeight, obstacle
                 x: spawnPoints[i].x,
                 y: spawnPoints[i].y,
                 tankType: players[i].selectedTank || 'purple',
-                character: players[i].selectedCharacter || 'jaccelini'
+                character: players[i].selectedCharacter || 'jaccelini',
+                team: players[i].team || null
             };
         }
     } else if (playerCount === 6) {
@@ -62,7 +66,8 @@ function generatePlayerSpawnPositions(players, arenaWidth, arenaHeight, obstacle
                 x: centerX + Math.cos(angle) * radius,
                 y: centerY + Math.sin(angle) * radius,
                 tankType: players[i].selectedTank || 'purple',
-                character: players[i].selectedCharacter || 'jaccelini'
+                character: players[i].selectedCharacter || 'jaccelini',
+                team: players[i].team || null
             };
         }
     } else {
@@ -86,7 +91,8 @@ function generatePlayerSpawnPositions(players, arenaWidth, arenaHeight, obstacle
                     x: centerX + Math.cos(angle) * ringRadius,
                     y: centerY + Math.sin(angle) * ringRadius,
                     tankType: players[playerIndex].selectedTank || 'purple',
-                    character: players[playerIndex].selectedCharacter || 'jaccelini'
+                    character: players[playerIndex].selectedCharacter || 'jaccelini',
+                    team: players[playerIndex].team || null
                 };
                 playerIndex++;
             }
