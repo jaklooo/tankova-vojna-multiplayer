@@ -633,6 +633,23 @@ button:hover {
     margin-bottom: 6px;
     border: 3px solid #3498db;
 }
+/* Character card text styling - use readable font */
+.character-card h3,
+.character-card p {
+    font-family: var(--font-body) !important;
+    margin: 5px 0;
+}
+.character-card h3 {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #f1c40f;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+}
+.character-card p {
+    font-size: 0.9em;
+    color: #ecf0f1;
+    opacity: 0.9;
+}
 .flag-icon {
     width: 12px;
     height: 8px;
@@ -684,11 +701,15 @@ button:hover {
     border-color: #f1c40f;
 }
 .tank-card h3 {
+    font-family: var(--font-body) !important;
+    font-size: 1.1em;
+    font-weight: 600;
     color: #f1c40f;
     margin-top: 5px;
     margin-bottom: 10px;
 }
 .tank-card p {
+    font-family: var(--font-body) !important;
     font-size: 0.9em;
     color: #bdc3c7;
     margin-bottom: 10px;
@@ -1102,7 +1123,10 @@ button:hover {
     cursor: not-allowed;
     filter: grayscale(100%);
 }
+/* Force Roboto font on character card text - high specificity to override inline styles */
+#lobby-character-cards .lobby-character-card h5,
 .lobby-character-card h5 {
+    font-family: 'Roboto', Arial, sans-serif !important;
     margin: 8px 0 4px 0;
     color: #c5e76f;
     font-size: 0.95em;
@@ -1110,7 +1134,9 @@ button:hover {
     text-shadow: 0 0 8px #8bc73f;
     letter-spacing: 1px;
 }
+#lobby-character-cards .lobby-character-card p,
 .lobby-character-card p {
+    font-family: 'Roboto', Arial, sans-serif !important;
     margin: 2px 0;
     font-size: 0.8em;
     color: #a8c7a8;
@@ -1134,20 +1160,6 @@ button:hover {
     color: #1e3326;
     font-weight: bold;
     text-transform: uppercase;
-}
-.lobby-character-card h5 {
-    color: #fff;
-    font-weight: 600;
-}
-.lobby-character-card p {
-    color: #bbb;
-    font-size: 0.75em;
-}
-#selected-character-info {
-    background: rgba(231, 76, 60, 0.1);
-    border-radius: 8px;
-    padding: 10px;
-    border: 1px solid #e74c3c;
 }
 /* Remove individual scroll from character cards container and make it flexible height */
 #lobby-character-cards {
@@ -2333,11 +2345,14 @@ body::-webkit-scrollbar-thumb:hover {
     margin-bottom: 8px;
 }
 .map-card h3 {
+    font-family: var(--font-body) !important;
+    font-weight: 600;
     color: #fff;
     margin: 8px 0 4px 0;
     font-size: 1.1em;
 }
 .map-card p {
+    font-family: var(--font-body) !important;
     color: #ccc;
     margin: 0;
     font-size: 0.9em;
