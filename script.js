@@ -780,7 +780,7 @@ function updateMapVotingDisplay(mapVotes) {
                     audioManager.play('canon-shot-sound', 0.35);
                 } else {
                     // Fallback for backward compatibility
-                    const audio = new Audio('canonshot.mp3');
+                    const audio = new Audio('assets/sounds/canonshot.mp3');
                     audio.preload = 'auto';
                     audio.volume = 0.35;
                     audio.currentTime = 0;
@@ -803,7 +803,7 @@ function updateMapVotingDisplay(mapVotes) {
             // Play sound if this is our tank getting hit
             if (damagedTank === gameState.player) {
                 try {
-                    const audio = new Audio('hitme.mp3');
+                    const audio = new Audio('assets/sounds/hitme.mp3');
                     audio.preload = 'auto';
                     audio.volume = 0.7;
                     audio.currentTime = 0;
@@ -1929,15 +1929,15 @@ let minimapCtx = null;
 const TANK_SPECS = {
     purple: { // Obrnený Bojovník (Armored Warrior) - Balanced, durable
         color: '#9b59b6', baseHealth: 120, armor: 60, speed: 1, damage: 70, cooldown: 400,
-        tankImage: 'tank1.png', canonImage: 'canon1.png'
+        tankImage: 'assets/images/tank1.png', canonImage: 'assets/images/canon1.png'
     },
     orange: { // Rýchly Útočník (Fast Attacker) - Low health, high speed, high burst
         color: '#e67e22', baseHealth: 90, armor: 90, speed: 1.5, damage: 30, cooldown: 150,
-        tankImage: 'tank2.png', canonImage: 'canon2.png'
+        tankImage: 'assets/images/tank2.png', canonImage: 'assets/images/canon2.png'
     },
     brown: { // Ťažký Moloch (Heavy Juggernaut) - High health, high damage, low speed
         color: '#8d6e63', baseHealth: 250, armor: 40, speed: 0.7, damage: 150, cooldown: 1000,
-        tankImage: 'tank3.png', canonImage: 'canon3.png'
+        tankImage: 'assets/images/tank3.png', canonImage: 'assets/images/canon3.png'
     }
 };
 
@@ -1948,47 +1948,47 @@ for (const type in TANK_SPECS) {
 
 // --- NOVINKA: CHARAKTERY ---
 const CHARACTERS = {
-    jaccelini: { name: 'M. Jaklović', country: 'Juhoslávia', image: 'ja.png', flag: 'YUG.png' },
-    tvaruzhkyn: { name: 'J. Tvaruzhkyn', country: 'Rusko', image: 'tvaruzek.jpg', flag: 'RUS.png' },
-    kindergarden: { name: 'J. W. Gardens', country: 'USA', image: 'zahry.jpg', flag: 'USA.png' },
-    landmann: { name: 'Herr Landmann', country: 'Nemecko', image: 'zeman.jpg', flag: 'GER.png' },
-    matthews: { name: 'A. Matthews', country: 'Spojené Kráľovstvo', image: 'Matous.jpg', flag: 'GBR.png' },
-    Hrebekushi: { name: 'P. Hrebekushi', country: 'Japonsko', image: 'hrebenar.jpg', flag: 'JAP.png' },
-    volenec: { name: 'J. Violencini', country: 'Taliansko', image: 'Volenec.JPG', flag: 'ITA.png' },
-    vacu: { name: 'J. Ben Vakul', country: 'Izrael', image: 'vacu.png', flag: 'ISR.png' },
-    ted: { name: 'T. J. Millner', country: 'Južná Afrika', image: 'ted.jpg', flag: 'RSA.png' },
-    svidek: { name: 'J. Svidze', country: 'Gruzínsko', image: 'svidek.JPG', flag: 'GEO.png' },
-    simek: { name: 'T. Šimek', country: 'Česko', image: 'simek.PNG', flag: 'CZE.png' },
-    rumpik: { name: 'D. Rampeeq', country: 'Pakistan', image: 'rumpik.PNG', flag: 'PAK.png' },
-    pilar: { name: 'V. Tamil Pilai', country: 'India', image: 'pilar.PNG', flag: 'IND.png' },
-    parusev: { name: 'J. Parushiev', country: 'Bulharsko', image: 'parusev.JPG', flag: 'BUL.png' },
-    miki: { name: 'M. Rasgueau', country: 'Francúzsko', image: 'miki.PNG', flag: 'FRA.png' },
-    mikes: { name: 'J. M. Cash', country: 'Kanada', image: 'mikes.PNG', flag: 'CAN.png' },
-    jirka: { name: 'J. H. Hisca', country: 'Kuba', image: 'jirka.JPG', flag: 'CUB.png' },
-    kocvara: { name: 'A. Kochvarsson', country: 'Švédsko', image: 'kocvara.JPG', flag: 'SWE.png' },
-    hajek: { name: 'P. Hajdukó', country: 'Maďarsko', image: 'hajek.JPG', flag: 'HUN.png' },
-    bonko: { name: 'M. Bon-kong', country: 'Čína', image: 'bonko.JPG', flag: 'PRC.png' },
-    ben: { name: 'B. H. Horácio', country: 'Brazília', image: 'Ben.JPG', flag: 'BRA.png' },
-    romancov: { name: 'A. P. Ramezanov', country: 'Irán', image: 'romancov.JPG', flag: 'IRN.png' },
-    huth: { name: 'O. Hutkowski', country: 'Poľsko', image: 'huth.JPG', flag: 'POL.png' },
-    belak: { name: 'F. Bella', country: 'Slovensko', image: 'belak.PNG', flag: 'SVK.png' },
-    franko: { name: 'Gen. L. Franco', country: 'Španielsko', image: 'franko.JPG', flag: 'ESP.png' },
-    fiedler: { name: 'F. Hiedler', country: 'Švajčiarsko', image: 'fiedler.JPG', flag: 'SUI.png' },
-    gaidussen: { name: 'M. Gaidussen', country: 'Nórsko', image: 'gajdos.png', flag: 'NOR.png' },
-    gazhi: { name: 'M. Al Gazhí', country: 'Lýbie', image: 'gazo.png', flag: 'LIB.png' },
-    katzenstein: { name: 'F. Katzenstein', country: 'Rakúsko', image: 'kocur.png', flag: 'RAK.png' },
-    kohenen: { name: 'M. Kohenen', country: 'Fínsko', image: 'kohel.jpg', flag: 'FIN.png' },
-    gnatt: { name: 'J. Gnatt', country: 'Austrália', image: 'komar.jpg', flag: 'AUS.png' },
-    christensen: { name: 'P. Christensen', country: 'Dánsko', image: 'kristian.jpg', flag: 'DEN.png' },
-    alkunzi: { name: 'M. al-Kunzí', country: 'Saudská Arábia', image: 'kunc.jpg', flag: 'KSA.png' },
-    khajoo: { name: 'N. Kha-Joo', country: 'Severná Kórea', image: 'novotnyk.jpg', flag: 'NKO.png' },
-    thneethom: { name: 'N. W. Thnee-Thom', country: 'Južná Kórea', image: 'novotnyt.png', flag: 'SKO.png' },
-    smakhal: { name: 'F. Smakhal', country: 'Turecko', image: 'slipy.png', flag: 'TUR.png' },
-    sortuda: { name: 'M. Sortuda', country: 'Portugalsko', image: 'stastna.jpg', flag: 'POR.png' },
-    strakadopoulos: { name: 'M. Strakadopoulos', country: 'Grécko', image: 'straka.jpg', flag: 'GRE.png' },
-    tumufjik: { name: 'M. Tūmūfjīk', country: 'Egypt', image: 'tomovcik.png', flag: 'EGY.png' },
-    womboclaat: { name: 'P. Womboclaat', country: 'Jamajka', image: 'vopat.jpg', flag: 'JAM.jpg' },
-    votrubovskij: { name: 'J. Votrubovskij', country: 'Bielorusko', image: 'votruba.png', flag: 'BLR.png' }
+    jaccelini: { name: 'M. Jaklović', country: 'Juhoslávia', image: 'assets/images/ja.png', flag: 'assets/images/YUG.png' },
+    tvaruzhkyn: { name: 'J. Tvaruzhkyn', country: 'Rusko', image: 'assets/images/tvaruzek.jpg', flag: 'assets/images/RUS.png' },
+    kindergarden: { name: 'J. W. Gardens', country: 'USA', image: 'assets/images/zahry.jpg', flag: 'assets/images/USA.png' },
+    landmann: { name: 'Herr Landmann', country: 'Nemecko', image: 'assets/images/zeman.jpg', flag: 'assets/images/GER.png' },
+    matthews: { name: 'A. Matthews', country: 'Spojené Kráľovstvo', image: 'assets/images/Matous.jpg', flag: 'assets/images/GBR.png' },
+    Hrebekushi: { name: 'P. Hrebekushi', country: 'Japonsko', image: 'assets/images/hrebenar.jpg', flag: 'assets/images/JAP.png' },
+    volenec: { name: 'J. Violencini', country: 'Taliansko', image: 'assets/images/Volenec.JPG', flag: 'assets/images/ITA.png' },
+    vacu: { name: 'J. Ben Vakul', country: 'Izrael', image: 'assets/images/vacu.png', flag: 'assets/images/ISR.png' },
+    ted: { name: 'T. J. Millner', country: 'Južná Afrika', image: 'assets/images/ted.jpg', flag: 'assets/images/RSA.png' },
+    svidek: { name: 'J. Svidze', country: 'Gruzínsko', image: 'assets/images/svidek.JPG', flag: 'assets/images/GEO.png' },
+    simek: { name: 'T. Šimek', country: 'Česko', image: 'assets/images/simek.PNG', flag: 'assets/images/CZE.png' },
+    rumpik: { name: 'D. Rampeeq', country: 'Pakistan', image: 'assets/images/rumpik.PNG', flag: 'assets/images/PAK.png' },
+    pilar: { name: 'V. Tamil Pilai', country: 'India', image: 'assets/images/pilar.PNG', flag: 'assets/images/IND.png' },
+    parusev: { name: 'J. Parushiev', country: 'Bulharsko', image: 'assets/images/parusev.JPG', flag: 'assets/images/BUL.png' },
+    miki: { name: 'M. Rasgueau', country: 'Francúzsko', image: 'assets/images/miki.PNG', flag: 'assets/images/FRA.png' },
+    mikes: { name: 'J. M. Cash', country: 'Kanada', image: 'assets/images/mikes.PNG', flag: 'assets/images/CAN.png' },
+    jirka: { name: 'J. H. Hisca', country: 'Kuba', image: 'assets/images/jirka.JPG', flag: 'assets/images/CUB.png' },
+    kocvara: { name: 'A. Kochvarsson', country: 'Švédsko', image: 'assets/images/kocvara.JPG', flag: 'assets/images/SWE.png' },
+    hajek: { name: 'P. Hajdukó', country: 'Maďarsko', image: 'assets/images/hajek.JPG', flag: 'assets/images/HUN.png' },
+    bonko: { name: 'M. Bon-kong', country: 'Čína', image: 'assets/images/bonko.JPG', flag: 'assets/images/PRC.png' },
+    ben: { name: 'B. H. Horácio', country: 'Brazília', image: 'assets/images/Ben.JPG', flag: 'assets/images/BRA.png' },
+    romancov: { name: 'A. P. Ramezanov', country: 'Irán', image: 'assets/images/romancov.JPG', flag: 'assets/images/IRN.png' },
+    huth: { name: 'O. Hutkowski', country: 'Poľsko', image: 'assets/images/huth.JPG', flag: 'assets/images/POL.png' },
+    belak: { name: 'F. Bella', country: 'Slovensko', image: 'assets/images/belak.PNG', flag: 'assets/images/SVK.png' },
+    franko: { name: 'Gen. L. Franco', country: 'Španielsko', image: 'assets/images/franko.JPG', flag: 'assets/images/ESP.png' },
+    fiedler: { name: 'F. Hiedler', country: 'Švajčiarsko', image: 'assets/images/fiedler.JPG', flag: 'assets/images/SUI.png' },
+    gaidussen: { name: 'M. Gaidussen', country: 'Nórsko', image: 'assets/images/gajdos.png', flag: 'assets/images/NOR.png' },
+    gazhi: { name: 'M. Al Gazhí', country: 'Lýbie', image: 'assets/images/gazo.png', flag: 'assets/images/LIB.png' },
+    katzenstein: { name: 'F. Katzenstein', country: 'Rakúsko', image: 'assets/images/kocur.png', flag: 'assets/images/RAK.png' },
+    kohenen: { name: 'M. Kohenen', country: 'Fínsko', image: 'assets/images/kohel.jpg', flag: 'assets/images/FIN.png' },
+    gnatt: { name: 'J. Gnatt', country: 'Austrália', image: 'assets/images/komar.jpg', flag: 'assets/images/AUS.png' },
+    christensen: { name: 'P. Christensen', country: 'Dánsko', image: 'assets/images/kristian.jpg', flag: 'assets/images/DEN.png' },
+    alkunzi: { name: 'M. al-Kunzí', country: 'Saudská Arábia', image: 'assets/images/kunc.jpg', flag: 'assets/images/KSA.png' },
+    khajoo: { name: 'N. Kha-Joo', country: 'Severná Kórea', image: 'assets/images/novotnyk.jpg', flag: 'assets/images/NKO.png' },
+    thneethom: { name: 'N. W. Thnee-Thom', country: 'Južná Kórea', image: 'assets/images/novotnyt.png', flag: 'assets/images/SKO.png' },
+    smakhal: { name: 'F. Smakhal', country: 'Turecko', image: 'assets/images/slipy.png', flag: 'assets/images/TUR.png' },
+    sortuda: { name: 'M. Sortuda', country: 'Portugalsko', image: 'assets/images/stastna.jpg', flag: 'assets/images/POR.png' },
+    strakadopoulos: { name: 'M. Strakadopoulos', country: 'Grécko', image: 'assets/images/straka.jpg', flag: 'assets/images/GRE.png' },
+    tumufjik: { name: 'M. Tūmūfjīk', country: 'Egypt', image: 'assets/images/tomovcik.png', flag: 'assets/images/EGY.png' },
+    womboclaat: { name: 'P. Womboclaat', country: 'Jamajka', image: 'assets/images/vopat.jpg', flag: 'assets/images/JAM.jpg' },
+    votrubovskij: { name: 'J. Votrubovskij', country: 'Bielorusko', image: 'assets/images/votruba.png', flag: 'assets/images/BLR.png' }
 };
 
 
@@ -2520,7 +2520,7 @@ class Tank {
             try {
                 if (this.isPlayer && attacker && attacker !== this) {
                     // Player got hit (by anyone, any team)
-                    const audio = new Audio('hitme.mp3');
+                    const audio = new Audio('assets/sounds/hitme.mp3');
                     audio.preload = 'auto';
                     audio.volume = 0.7;
                     audio.currentTime = 0;
@@ -2528,7 +2528,7 @@ class Tank {
                 }
                 if (attacker === gameState.player && !this.isPlayer) {
                     // Player hit anyone (enemy or ally, not self)
-                    const audio = new Audio('hithim.mp3');
+                    const audio = new Audio('assets/sounds/hithim.mp3');
                     audio.preload = 'auto';
                     audio.volume = 0.7;
                     audio.currentTime = 0;
@@ -2605,7 +2605,7 @@ class Tank {
         // Play explosion sound
         if (typeof document !== 'undefined') {
             try {
-                const audio = new Audio('explosion.mp3');
+                const audio = new Audio('assets/sounds/explosion.mp3');
                 audio.preload = 'auto';
                 audio.volume = 0.7;
                 audio.currentTime = 0;
@@ -3170,19 +3170,19 @@ async function loadGameWithProgress() {
 
 async function loadTextureAssets() {
     // Load textures
-    await loadImage('menu_background', 'menu_background.png');
-    await loadImage('grass_texture', 'grass_texture.png');
-    await loadImage('mud_texture', 'mud_texture.png');
-    await loadImage('tree_texture', 'tree_texture.png');
-    await loadImage('rock_texture', 'rock_texture.png');
-    await loadImage('coin_icon', 'coin.png');
-    await loadImage('dessert_texture', 'dessert.jpg');
-    await loadImage('oilrig', 'oilrig.png');
-    await loadImage('ice_texture', 'ice.png');
-    await loadImage('iglu', 'IGLU.png');
-    await loadImage('bullet', 'bullet.png');
-    await loadImage('bullet2', 'bullet2.png');
-    await loadImage('snowball', 'snehovgula.png');
+    await loadImage('menu_background', 'assets/images/menu_background.png');
+    await loadImage('grass_texture', 'assets/images/grass_texture.png');
+    await loadImage('mud_texture', 'assets/images/mud_texture.png');
+    await loadImage('tree_texture', 'assets/images/tree_texture.png');
+    await loadImage('rock_texture', 'assets/images/rock_texture.png');
+    await loadImage('coin_icon', 'assets/images/coin.png');
+    await loadImage('dessert_texture', 'assets/images/dessert.jpg');
+    await loadImage('oilrig', 'assets/images/oilrig.png');
+    await loadImage('ice_texture', 'assets/images/ice.png');
+    await loadImage('iglu', 'assets/images/IGLU.png');
+    await loadImage('bullet', 'assets/images/bullet.png');
+    await loadImage('bullet2', 'assets/images/bullet2.png');
+    await loadImage('snowball', 'assets/images/snehovgula.png');
 }
 
 async function loadCharacterAssets() {
@@ -4110,7 +4110,7 @@ function createOilrigs() {
                 // Play explosion sound
                 if (typeof document !== 'undefined') {
                     try {
-                        const audio = new Audio('explosion.mp3');
+                        const audio = new Audio('assets/sounds/explosion.mp3');
                         audio.preload = 'auto';
                         audio.volume = 0.7;
                         audio.currentTime = 0;
