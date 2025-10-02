@@ -1,5 +1,12 @@
+/* === GOOGLE FONTS IMPORT === */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Roboto:wght@400;500;700&display=swap');
+
 /* === CSS CUSTOM PROPERTIES (Variables) === */
 :root {
+    /* Font Families */
+    --font-heading: 'Press Start 2P', 'Courier New', monospace;
+    --font-body: 'Roboto', 'Arial', sans-serif;
+    
     /* Primary Colors */
     --primary-color: #BB133A;
     --primary-dark: #8B0F2D;
@@ -307,28 +314,36 @@ body {
     padding: 0;
     overflow-x: hidden;
     overflow-y: auto;
-    font-family: 'Press Start 2P', cursive; /* Poui retro font */
+    font-family: var(--font-body);
     background-color: #2c3e50;
     color: #ecf0f1;
     min-height: 100vh;
     width: 100vw;
     box-sizing: border-box;
 }
+
+/* Apply Roboto to all text elements except headings */
+p, span, div, button, input, select, textarea, label, 
+.player-item, .character-card, .tank-card, .map-card,
+.player-name, .character-name, .stat, table, th, td {
+    font-family: var(--font-body);
+}
+
 *, *::before, *::after {
     box-sizing: border-box;
 }
-/* Novı štıl pre intro video */
+/* Novï¿½ ï¿½tï¿½l pre intro video */
 .intro-video {
-    position: fixed; /* Prekryje všetko */
+    position: fixed; /* Prekryje vï¿½etko */
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    object-fit: cover; /* Zabezpeèí, e video vyplní celú plochu */
-    z-index: 1000; /* Uisti sa, e je nad všetkım ostatnım */
-    background-color: black; /* Pre prípad naèítavania */
+    object-fit: cover; /* Zabezpeï¿½ï¿½, ï¿½e video vyplnï¿½ celï¿½ plochu */
+    z-index: 1000; /* Uisti sa, ï¿½e je nad vï¿½etkï¿½m ostatnï¿½m */
+    background-color: black; /* Pre prï¿½pad naï¿½ï¿½tavania */
 }
-/* Ostatné obrazovky sa na zaèiatku skryjú, kım video neskonèí */
+/* Ostatnï¿½ obrazovky sa na zaï¿½iatku skryjï¿½, kï¿½m video neskonï¿½ï¿½ */
 #app-container {
     position: relative;
     width: 100vw;
@@ -353,7 +368,7 @@ body {
     padding: 0;
 }
 .screen.active {
-    display: block; /* Zobrazí sa len aktívna obrazovka */
+    display: block; /* Zobrazï¿½ sa len aktï¿½vna obrazovka */
 }
 /* For screens that need centering (main menu, etc.) */
 #main-menu, #character-selection, #tank-selection, #mode-selection, #tutorial-screen, #end-screen {
@@ -367,10 +382,13 @@ body {
 #main-menu.active, #character-selection.active, #tank-selection.active, #mode-selection.active, #tutorial-screen.active, #end-screen.active {
     display: flex;
 }
-h1, h2 {
-    color: #f1c40f; /* ltá farba pre nadpisy */
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    color: #f1c40f;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
     margin-bottom: 20px;
+    line-height: 1.4;
+    letter-spacing: 1px;
 }
 button {
     background-color: #e67e22;
@@ -396,7 +414,7 @@ button:hover {
     box-shadow: 0 0 30px #00ff88, 0 0 60px #00ff88, 0 8px 25px rgba(0,0,0,0.4);
     border: 2px solid #00ff88;
 }
-/* Špecifické štıly pre "Spä do menu" tlaèidlá */
+/* ï¿½pecifickï¿½ ï¿½tï¿½ly pre "Spï¿½ do menu" tlaï¿½idlï¿½ */
 .back-to-menu {
     background-color: #95a5a6 !important;
     color: #2c3e50 !important;
@@ -408,9 +426,9 @@ button:hover {
 }
 #gameCanvas {
     display: block;
-    background-color: #2ecc71; /* Fallback farba pre trávu */
+    background-color: #2ecc71; /* Fallback farba pre trï¿½vu */
     position: absolute;
-    top: 0; /* Bude posunuté JS pod¾a HUD */
+    top: 0; /* Bude posunutï¿½ JS podï¿½a HUD */
     left: 0;
 }
 #hud-top {
@@ -428,7 +446,7 @@ button:hover {
     box-sizing: border-box;
     z-index: 10;
 }
-/* NOVINKA: Štıly pre zobrazenie informácií o tíme v HUD */
+/* NOVINKA: ï¿½tï¿½ly pre zobrazenie informï¿½ciï¿½ o tï¿½me v HUD */
 .team-info {
     display: flex;
     align-items: center;
@@ -544,13 +562,13 @@ button:hover {
     opacity: 0.7;
     pointer-events: none;
 }
-/* RANDOM SELECTED - ABSOLÚTNE NAJVYŠŠIA PRIORITA */
+/* RANDOM SELECTED - ABSOLï¿½TNE NAJVYï¿½ï¿½IA PRIORITA */
 .character-card.random-selected {
     filter: grayscale(1) brightness(0.5) !important;
     opacity: 0.5 !important;
     pointer-events: none !important;
     position: relative;
-    border: 3px solid var(--secondary-color) !important; /* Testovací oranovı okraj */
+    border: 3px solid var(--secondary-color) !important; /* Testovacï¿½ oranï¿½ovï¿½ okraj */
 }
 .character-card.random-selected::after {
     content: "??";
@@ -560,18 +578,18 @@ button:hover {
     font-size: 18px;
     text-shadow: 0 0 3px #000;
     z-index: 10;
-    background: rgba(255, 255, 0, 0.8); /* lté pozadie pre testovanie */
+    background: rgba(255, 255, 0, 0.8); /* ï¿½ltï¿½ pozadie pre testovanie */
     padding: 2px;
     border-radius: 3px;
 }
-/* ULTRA ŠPECIFICKÉ PRE ENEMY - MAXIMÁLNA PRIORITA */
+/* ULTRA ï¿½PECIFICKï¿½ PRE ENEMY - MAXIMï¿½LNA PRIORITA */
 .character-card.selected-enemy-commander.random-selected,
 .character-card.selected-enemy-ally.random-selected {
     filter: grayscale(1) brightness(0.3) !important;
     opacity: 0.3 !important;
     border-color: #e74c3c !important;
-    background: #000 !important; /* Èierne pozadie pre test */
-    transform: scale(0.95) !important; /* Zmenšenie pre test */
+    background: #000 !important; /* ï¿½ierne pozadie pre test */
+    transform: scale(0.95) !important; /* Zmenï¿½enie pre test */
 }
 .character-card.selected-enemy-commander.random-selected {
     background: linear-gradient(0deg, #000 60%, #000 100%) !important;
@@ -579,7 +597,7 @@ button:hover {
 .character-card.selected-enemy-ally.random-selected {
     box-shadow: 0 0 0 5px #e74c3c, 0 2px 8px #000a !important;
 }
-/* ULTRA ŠPECIFICKÉ PRE HRÁÈOV - MAXIMÁLNA PRIORITA */
+/* ULTRA ï¿½PECIFICKï¿½ PRE HRï¿½ï¿½OV - MAXIMï¿½LNA PRIORITA */
 .character-card.selected-commander.random-selected,
 .character-card.selected-ally.random-selected,
 .character-card.commander-selected.random-selected,
@@ -587,10 +605,10 @@ button:hover {
     filter: grayscale(1) brightness(0.3) !important;
     opacity: 0.3 !important;
     border-color: #27ae60 !important;
-    background: #004400 !important; /* Tmavo zelené pozadie pre test */
-    transform: scale(0.95) !important; /* Zmenšenie pre test */
+    background: #004400 !important; /* Tmavo zelenï¿½ pozadie pre test */
+    transform: scale(0.95) !important; /* Zmenï¿½enie pre test */
 }
-/* ŠPECIFICKÉ OVERRIDE PRE PLAYER CHARACTERS */
+/* ï¿½PECIFICKï¿½ OVERRIDE PRE PLAYER CHARACTERS */
 .character-card.selected-commander.random-selected,
 .character-card.selected-ally.random-selected,
 .character-card.commander-selected.random-selected,
@@ -601,7 +619,7 @@ button:hover {
 .character-card:hover {
     transform: translateY(-5px);
     border-color: #f1c40f;
-    /* Dynamické pozadie nastaví JS pod¾a vlajky */
+    /* Dynamickï¿½ pozadie nastavï¿½ JS podï¿½a vlajky */
     background-size: cover !important;
     background-position: center !important;
     background-repeat: no-repeat !important;
@@ -1556,7 +1574,7 @@ button:hover {
         0 8px 25px rgba(0,0,0,0.5);
     transform: translateY(-3px) scale(1.05);
 }
-/* Náhodnı vıber button */
+/* Nï¿½hodnï¿½ vï¿½ber button */
 #character-nahodny-btn {
     background: linear-gradient(45deg, #f1c40f, var(--secondary-color));
     color: white;

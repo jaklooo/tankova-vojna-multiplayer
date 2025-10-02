@@ -850,6 +850,24 @@ function updateMapVotingDisplay(mapVotes) {
         }
     });
     
+    // Handle all-vs-all game ending
+    socket.on('all-vs-all-end', (data) => {
+        console.log('All-vs-all game ended:', data);
+        handleMultiplayerGameEnd(data);
+    });
+    
+    // Handle team match ending
+    socket.on('team-match-end', (data) => {
+        console.log('Team match ended:', data);
+        handleMultiplayerGameEnd(data);
+    });
+    
+    // Handle team round ending
+    socket.on('team-round-end', (data) => {
+        console.log('Team round ended:', data);
+        handleMultiplayerRoundEnd(data);
+    });
+    
     // Handle player disconnection during game
     socket.on('player-disconnected', (data) => {
         console.log('Player disconnected:', data);
@@ -6279,6 +6297,166 @@ function showSpectatorMessage() {
             }
         }, 5000);
     }
+}
+
+// Handle multiplayer game ending
+function handleMultiplayerGameEnd(data) {
+    console.log('Handling multiplayer game end:', data);
+    
+    // Stop game loop
+    gameState.roundOver = true;
+    
+    // Determine winner message
+    let winnerMessage = '';
+    let isPlayerWinner = false;
+    
+    if (data.winner) {
+        if (data.winner === 'player' || data.winner === socket?.id) {
+            winnerMessage = '🎉 VÍŤAZSTVO! 🎉';
+            isPlayerWinner = true;
+        } else if (data.winner.team) {
+            // Team mode
+            const playerTeam = gameState.player?.team;
+            if (playerTeam && data.winner.team === playerTeam) {
+                winnerMessage = `🎉 VÍŤAZSTVO TÍM ${data.winner.team.toUpperCase()}! 🎉`;
+                isPlayerWinner = true;
+            } else {
+                winnerMessage = `PREHRA - Vyhral tím ${data.winner.team.toUpperCase()}`;
+            }
+        } else if (data.winnerName) {
+            winnerMessage = `${data.winnerName} VYHRAL!`;
+            isPlayerWinner = (data.winner === socket?.id);
+        } else {
+            winnerMessage = 'HRA SKONČILA';
+        }
+    } else {
+        winnerMessage = 'REMÍZA';
+    }
+    
+    // Show end game screen
+    showMultiplayerEndScreen(winnerMessage, isPlayerWinner, data);
+}
+
+// Handle multiplayer round ending (for team mode)
+function handleMultiplayerRoundEnd(data) {
+    console.log('Handling multiplayer round end:', data);
+    
+    // Pause game temporarily
+    gameState.roundOver = true;
+    
+    // Show round result
+    const roundMessage = `KONIEC KOLA ${data.round}\\n${data.winnerTeam.toUpperCase()} VYHRAL!\\nSkóre: Modrý ${data.scores.blue} - ${data.scores.red} Červený`;
+    
+    showNotification(roundMessage, 'info', 5000);
+    
+    if (data.matchEnd) {
+        // Match is over, show final results
+        setTimeout(() => {
+            // Will receive 'team-match-end' event
+        }, 3000);
+    } else {
+        // Next round will start automatically
+        showNotification('Ďalšie kolo začne o chvíľu...', 'info', 3000);
+    }
+}
+
+// Show multiplayer end game screen
+function showMultiplayerEndScreen(message, isWinner, data) {
+    // Create end screen overlay
+    let endScreen = document.getElementById('multiplayer-end-screen');
+    if (!endScreen) {
+        endScreen = document.createElement('div');
+        endScreen.id = 'multiplayer-end-screen';
+        endScreen.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            color: white;
+            font-family: 'Roboto', 'Arial', sans-serif;
+        `;
+        document.body.appendChild(endScreen);
+    }
+    
+    // Build end screen content
+    endScreen.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+            <h1 style="font-family: 'Press Start 2P', 'Courier New', monospace; font-size: 2.5em; margin-bottom: 40px; color: ${isWinner ? '#27ae60' : '#e74c3c'}; line-height: 1.4;">
+                ${message}
+            </h1>
+            
+            ${data.stats ? `
+                <div style="font-family: 'Roboto', 'Arial', sans-serif; font-size: 1.3em; margin-bottom: 30px; line-height: 1.8;">
+                    <p style="margin: 10px 0;">Kills: ${data.stats.kills || 0}</p>
+                    <p style="margin: 10px 0;">Deaths: ${data.stats.deaths || 0}</p>
+                    <p style="margin: 10px 0;">Damage: ${data.stats.damage || 0}</p>
+                </div>
+            ` : ''}
+            
+            <div style="margin-top: 50px;">
+                <button onclick="handlePlayAgain()" style="
+                    font-family: 'Roboto', 'Arial', sans-serif;
+                    font-size: 1.1em;
+                    font-weight: 600;
+                    padding: 15px 30px;
+                    margin: 10px;
+                    background: #27ae60;
+                    color: white;
+                    border: none;
+                    cursor: pointer;
+                    border-radius: 10px;
+                ">
+                    HRAŤ ZNOVA
+                </button>
+                <button onclick="handleBackToLobby()" style="
+                    font-family: 'Roboto', 'Arial', sans-serif;
+                    font-size: 1.1em;
+                    font-weight: 600;
+                    padding: 15px 30px;
+                    margin: 10px;
+                    background: #e67e22;
+                    color: white;
+                    border: none;
+                    cursor: pointer;
+                    border-radius: 10px;
+                ">
+                    SPÄŤ DO LOBBY
+                </button>
+            </div>
+        </div>
+    `;
+    
+    endScreen.style.display = 'flex';
+}
+
+// Handle play again button
+function handlePlayAgain() {
+    if (socket) {
+        socket.emit('play-again');
+    }
+    const endScreen = document.getElementById('multiplayer-end-screen');
+    if (endScreen) {
+        endScreen.style.display = 'none';
+    }
+}
+
+// Handle back to lobby button
+function handleBackToLobby() {
+    if (socket) {
+        socket.emit('back-to-lobby');
+    }
+    const endScreen = document.getElementById('multiplayer-end-screen');
+    if (endScreen) {
+        endScreen.style.display = 'none';
+    }
+    showScreen('lobby');
 }
 
 function showEliminationMessage(data) {
