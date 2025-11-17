@@ -2622,3 +2622,857 @@ body::-webkit-scrollbar-thumb:hover {
     font-size: 0.9em;
 }
 
+/* ============================================ */
+/* RESPONSIVE DESIGN - MOBILE MEDIA QUERIES */
+/* ============================================ */
+
+/* Extra small devices (phones, less than 576px) */
+@media (max-width: 575.98px) {
+    /* General typography adjustments */
+    body {
+        font-size: 0.9em;
+    }
+    
+    h1 {
+        font-size: 1.8em;
+    }
+    
+    h2 {
+        font-size: 1.5em;
+    }
+    
+    /* Priority 1: Character Selection Grid */
+    .character-cards {
+        grid-template-columns: repeat(1, 1fr);
+        gap: 12px;
+        padding-right: 5px;
+        max-height: 60vh;
+    }
+    
+    .character-card {
+        width: 140px;
+        padding: 10px;
+    }
+    
+    .character-card img {
+        width: 70px;
+        height: 70px;
+    }
+    
+    .character-card h3 {
+        font-size: 0.85em;
+    }
+    
+    .character-card p {
+        font-size: 0.7em;
+    }
+    
+    .character-selection-buttons-row button {
+        min-width: 160px;
+        min-height: 50px;
+        font-size: 0.9em;
+    }
+    
+    /* Priority 2: Button sizes and fonts */
+    button {
+        padding: 12px 24px;
+        margin: 10px;
+        font-size: 0.9em;
+        min-width: 200px;
+        min-height: 50px;
+    }
+    
+    /* Priority 3: Tank Cards */
+    .tank-cards {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .tank-card {
+        width: 160px;
+    }
+    
+    /* Priority 3: Map Cards */
+    .map-cards {
+        grid-template-columns: 1fr;
+        gap: 15px;
+        margin-top: 15px;
+    }
+    
+    .map-card {
+        min-width: 100%;
+        width: auto;
+        max-width: 300px;
+        margin: 0 auto;
+        padding: 12px 18px;
+    }
+    
+    /* Priority 4: HUD and Game UI */
+    #hud-top {
+        height: 60px;
+        padding: 0 10px;
+    }
+    
+    .char-icon {
+        width: 30px;
+        height: 30px;
+    }
+    
+    #score-display span, #round-info span {
+        margin: 0 5px;
+        font-size: 0.85em;
+    }
+    
+    #bullet-selection-ui {
+        top: 8px;
+        right: 8px;
+        gap: 10px;
+    }
+    
+    .bullet-option {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .bullet-icon {
+        width: 24px;
+        height: 24px;
+    }
+    
+    .bullet-cost {
+        font-size: 0.75em;
+        padding: 1px 4px;
+    }
+    
+    .coin-icon {
+        width: 20px;
+        height: 20px;
+    }
+    
+    /* Priority 5: Loading Screen */
+    .loading-container {
+        padding: 20px;
+        max-width: 90%;
+    }
+    
+    .loading-logo h1 {
+        font-size: 2em;
+        margin-bottom: 20px;
+    }
+    
+    .loading-text {
+        font-size: 0.9em;
+    }
+    
+    .loading-percentage {
+        font-size: 1.1em;
+    }
+    
+    .tank-loader {
+        width: 60px;
+        height: 40px;
+    }
+    
+    /* Priority 6: Multiplayer Lobby */
+    #multiplayer-lobby h2 {
+        font-size: 2em;
+        margin-bottom: 20px;
+    }
+    
+    #lobby-status {
+        font-size: 1.1em;
+    }
+    
+    #lobby-character-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        padding: 8px;
+    }
+    
+    .lobby-character-card {
+        min-height: 100px;
+        padding: 10px;
+    }
+    
+    #lobby-tank-cards {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .lobby-tank-card {
+        min-width: 100%;
+        max-width: 300px;
+        margin: 0 auto;
+    }
+    
+    #lobby-map-cards {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .lobby-map-card {
+        min-width: 100%;
+        max-width: 300px;
+        margin: 0 auto;
+    }
+    
+    /* Teams Container - Stack Vertically */
+    .teams-container {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .team-header h4 {
+        font-size: 1.3em;
+    }
+    
+    .team-name-input {
+        font-size: 0.95em;
+        padding: 10px 15px;
+    }
+    
+    #team-ready-btn {
+        font-size: 1em;
+        padding: 14px 28px;
+        min-width: 180px;
+    }
+    
+    /* Multiplayer Name Entry */
+    #multiplayer-name-entry h2 {
+        font-size: 2em;
+        letter-spacing: 2px;
+    }
+    
+    #multiplayer-name-entry p {
+        font-size: 1.2em;
+    }
+    
+    .name-entry-form {
+        padding: 30px 20px;
+        margin: 40px auto;
+    }
+    
+    #player-name-input {
+        padding: 18px 20px;
+        font-size: 20px;
+        min-height: 60px;
+    }
+    
+    .name-entry-buttons {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .name-entry-buttons button {
+        min-width: 100%;
+        min-height: 55px;
+        font-size: 1.1em;
+        padding: 16px 30px;
+    }
+    
+    /* Game Mode Selection */
+    .game-modes-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+        padding: 0 10px;
+    }
+    
+    .game-mode-card {
+        min-height: 160px;
+        padding: 20px;
+    }
+    
+    .game-mode-card h3 {
+        font-size: 20px;
+    }
+    
+    .game-mode-card p {
+        font-size: 14px;
+    }
+    
+    #multiplayer-mode-selection h2 {
+        font-size: 2.2em;
+    }
+    
+    /* Ready Button */
+    #ready-btn {
+        min-width: 200px;
+        min-height: 55px;
+        font-size: 1em;
+        padding: 14px 24px;
+    }
+    
+    /* Lobby Bottom Controls */
+    .lobby-bottom-controls {
+        flex-direction: column;
+        gap: 12px;
+        padding: 15px;
+    }
+    
+    #host-start-game-btn,
+    #host-start-selection-btn {
+        min-width: 100%;
+        min-height: 55px;
+        font-size: 1em;
+        padding: 14px 24px;
+    }
+    
+    /* Touch-friendly adjustments - ensure min 44x44px */
+    button,
+    .character-card,
+    .tank-card,
+    .map-card,
+    .bullet-option,
+    .lobby-character-card,
+    .lobby-tank-card,
+    .lobby-map-card {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Viewport optimizations */
+    body,
+    #app-container,
+    .screen {
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+}
+
+/* Small devices (landscape phones, tablets, 576px - 768px) */
+@media (min-width: 576px) and (max-width: 767.98px) {
+    /* General typography adjustments */
+    body {
+        font-size: 1em;
+    }
+    
+    h1 {
+        font-size: 2.2em;
+    }
+    
+    h2 {
+        font-size: 1.8em;
+    }
+    
+    /* Character Selection Grid */
+    .character-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+        max-height: 65vh;
+    }
+    
+    .character-card {
+        width: 150px;
+        padding: 12px;
+    }
+    
+    .character-card img {
+        width: 80px;
+        height: 80px;
+    }
+    
+    .character-card h3 {
+        font-size: 0.9em;
+    }
+    
+    .character-card p {
+        font-size: 0.75em;
+    }
+    
+    .character-selection-buttons-row button {
+        min-width: 180px;
+        min-height: 55px;
+        font-size: 1em;
+    }
+    
+    /* Button sizes and fonts */
+    button {
+        padding: 14px 28px;
+        margin: 12px;
+        font-size: 1em;
+        min-width: 220px;
+        min-height: 55px;
+    }
+    
+    /* Tank Cards */
+    .tank-cards {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 18px;
+    }
+    
+    .tank-card {
+        width: 170px;
+    }
+    
+    /* Map Cards */
+    .map-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 18px;
+    }
+    
+    .map-card {
+        width: 180px;
+        padding: 14px 20px;
+    }
+    
+    /* HUD and Game UI */
+    #hud-top {
+        height: 70px;
+        padding: 0 15px;
+    }
+    
+    .char-icon {
+        width: 35px;
+        height: 35px;
+    }
+    
+    #score-display span, #round-info span {
+        margin: 0 8px;
+        font-size: 0.95em;
+    }
+    
+    #bullet-selection-ui {
+        top: 10px;
+        right: 16px;
+        gap: 12px;
+    }
+    
+    .bullet-option {
+        width: 48px;
+        height: 48px;
+    }
+    
+    .bullet-icon {
+        width: 28px;
+        height: 28px;
+    }
+    
+    .bullet-cost {
+        font-size: 0.85em;
+    }
+    
+    /* Loading Screen */
+    .loading-container {
+        padding: 30px;
+        max-width: 450px;
+    }
+    
+    .loading-logo h1 {
+        font-size: 2.5em;
+        margin-bottom: 30px;
+    }
+    
+    .loading-text {
+        font-size: 1em;
+    }
+    
+    .loading-percentage {
+        font-size: 1.2em;
+    }
+    
+    /* Multiplayer Lobby */
+    #multiplayer-lobby h2 {
+        font-size: 2.5em;
+    }
+    
+    #lobby-status {
+        font-size: 1.2em;
+    }
+    
+    #lobby-character-cards {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+    }
+    
+    .lobby-character-card {
+        min-height: 110px;
+        padding: 12px;
+    }
+    
+    #lobby-tank-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+    
+    #lobby-map-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+    
+    /* Teams Container */
+    .teams-container {
+        grid-template-columns: 1fr;
+        gap: 18px;
+    }
+    
+    .team-header h4 {
+        font-size: 1.5em;
+    }
+    
+    .team-name-input {
+        font-size: 1em;
+        padding: 11px 16px;
+    }
+    
+    #team-ready-btn {
+        font-size: 1.1em;
+        padding: 16px 32px;
+        min-width: 220px;
+    }
+    
+    /* Multiplayer Name Entry */
+    #multiplayer-name-entry h2 {
+        font-size: 2.5em;
+    }
+    
+    #multiplayer-name-entry p {
+        font-size: 1.3em;
+    }
+    
+    .name-entry-form {
+        padding: 40px 30px;
+    }
+    
+    #player-name-input {
+        padding: 20px 25px;
+        font-size: 24px;
+        min-height: 70px;
+    }
+    
+    .name-entry-buttons {
+        flex-direction: row;
+        gap: 20px;
+    }
+    
+    .name-entry-buttons button {
+        min-width: 220px;
+        min-height: 60px;
+        font-size: 1.2em;
+    }
+    
+    /* Game Mode Selection */
+    .game-modes-grid {
+        grid-template-columns: 1fr;
+        gap: 25px;
+    }
+    
+    .game-mode-card {
+        min-height: 180px;
+        padding: 25px;
+    }
+    
+    .game-mode-card h3 {
+        font-size: 24px;
+    }
+    
+    .game-mode-card p {
+        font-size: 16px;
+    }
+    
+    #multiplayer-mode-selection h2 {
+        font-size: 2.6em;
+    }
+    
+    /* Ready Button */
+    #ready-btn {
+        min-width: 240px;
+        min-height: 60px;
+        font-size: 1.1em;
+    }
+    
+    /* Lobby Bottom Controls */
+    .lobby-bottom-controls {
+        flex-direction: row;
+        gap: 20px;
+    }
+    
+    #host-start-game-btn,
+    #host-start-selection-btn {
+        min-width: 240px;
+        min-height: 60px;
+        font-size: 1.1em;
+    }
+    
+    /* Touch-friendly adjustments */
+    button,
+    .character-card,
+    .tank-card,
+    .map-card,
+    .bullet-option {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Viewport optimizations */
+    body,
+    #app-container,
+    .screen {
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+}
+
+/* Medium devices (tablets, 768px - 992px) */
+@media (min-width: 768px) and (max-width: 991.98px) {
+    /* General typography adjustments */
+    body {
+        font-size: 1.1em;
+    }
+    
+    h1 {
+        font-size: 2.5em;
+    }
+    
+    h2 {
+        font-size: 2em;
+    }
+    
+    /* Character Selection Grid */
+    .character-cards {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+        max-height: 70vh;
+    }
+    
+    .character-card {
+        width: 160px;
+        padding: 13px;
+    }
+    
+    .character-card img {
+        width: 90px;
+        height: 90px;
+    }
+    
+    .character-card h3 {
+        font-size: 0.95em;
+    }
+    
+    .character-card p {
+        font-size: 0.78em;
+    }
+    
+    .character-selection-buttons-row button {
+        min-width: 200px;
+        min-height: 60px;
+        font-size: 1.1em;
+    }
+    
+    /* Button sizes and fonts */
+    button {
+        padding: 16px 32px;
+        margin: 13px;
+        font-size: 1.1em;
+        min-width: 240px;
+        min-height: 60px;
+    }
+    
+    /* Tank Cards */
+    .tank-cards {
+        flex-direction: row;
+        gap: 20px;
+    }
+    
+    .tank-card {
+        width: 180px;
+    }
+    
+    /* Map Cards */
+    .map-cards {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+    }
+    
+    .map-card {
+        width: 190px;
+        padding: 16px 22px;
+    }
+    
+    /* HUD and Game UI */
+    #hud-top {
+        height: 75px;
+        padding: 0 18px;
+    }
+    
+    .char-icon {
+        width: 38px;
+        height: 38px;
+    }
+    
+    #score-display span, #round-info span {
+        margin: 0 9px;
+        font-size: 1em;
+    }
+    
+    #bullet-selection-ui {
+        top: 11px;
+        right: 20px;
+        gap: 14px;
+    }
+    
+    .bullet-option {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .bullet-icon {
+        width: 30px;
+        height: 30px;
+    }
+    
+    .bullet-cost {
+        font-size: 0.9em;
+    }
+    
+    /* Loading Screen */
+    .loading-container {
+        padding: 35px;
+        max-width: 480px;
+    }
+    
+    .loading-logo h1 {
+        font-size: 2.7em;
+        margin-bottom: 35px;
+    }
+    
+    .loading-text {
+        font-size: 1.1em;
+    }
+    
+    .loading-percentage {
+        font-size: 1.3em;
+    }
+    
+    /* Multiplayer Lobby */
+    #multiplayer-lobby h2 {
+        font-size: 2.7em;
+    }
+    
+    #lobby-status {
+        font-size: 1.3em;
+    }
+    
+    #lobby-character-cards {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+    }
+    
+    .lobby-character-card {
+        min-height: 115px;
+        padding: 13px;
+    }
+    
+    #lobby-tank-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 18px;
+    }
+    
+    #lobby-map-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 18px;
+    }
+    
+    /* Teams Container */
+    .teams-container {
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    
+    .team-header h4 {
+        font-size: 1.6em;
+    }
+    
+    .team-name-input {
+        font-size: 1.05em;
+        padding: 11px 17px;
+    }
+    
+    #team-ready-btn {
+        font-size: 1.2em;
+        padding: 17px 36px;
+        min-width: 240px;
+    }
+    
+    /* Multiplayer Name Entry */
+    #multiplayer-name-entry h2 {
+        font-size: 2.8em;
+    }
+    
+    #multiplayer-name-entry p {
+        font-size: 1.4em;
+    }
+    
+    .name-entry-form {
+        padding: 45px 35px;
+    }
+    
+    #player-name-input {
+        padding: 22px 28px;
+        font-size: 26px;
+        min-height: 75px;
+    }
+    
+    .name-entry-buttons button {
+        min-width: 250px;
+        min-height: 65px;
+        font-size: 1.3em;
+    }
+    
+    /* Game Mode Selection */
+    .game-modes-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 28px;
+    }
+    
+    .game-mode-card {
+        min-height: 190px;
+        padding: 28px;
+    }
+    
+    .game-mode-card h3 {
+        font-size: 26px;
+    }
+    
+    .game-mode-card p {
+        font-size: 17px;
+    }
+    
+    #multiplayer-mode-selection h2 {
+        font-size: 2.8em;
+    }
+    
+    /* Ready Button */
+    #ready-btn {
+        min-width: 260px;
+        min-height: 65px;
+        font-size: 1.2em;
+    }
+    
+    /* Lobby Bottom Controls */
+    #host-start-game-btn,
+    #host-start-selection-btn {
+        min-width: 260px;
+        min-height: 65px;
+        font-size: 1.15em;
+    }
+    
+    /* Touch-friendly adjustments */
+    button,
+    .character-card,
+    .tank-card,
+    .map-card,
+    .bullet-option {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Viewport optimizations */
+    body,
+    #app-container,
+    .screen {
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+}
+
