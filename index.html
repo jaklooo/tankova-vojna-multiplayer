@@ -2,7 +2,10 @@
 <html lang="sk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
     <title>PK TANKY - Tank War Game</title>
     <meta name="description" content="Multiplayer tank battle game with 40+ unique characters from around the world">
     <meta name="keywords" content="tank game, multiplayer, battle, strategy, online game, PK TANKY">
@@ -17,9 +20,38 @@
     <link rel="preload" as="image" href="assets/images/PK.png">
     <link rel="preload" as="image" href="assets/images/menu_background.png">
     
-    <link rel="stylesheet" href="style.css?v=2.0">
+    <link rel="stylesheet" href="style.css?v=2.3">
 </head>
 <body>
+    <!-- Mobile Controls (hidden on desktop) -->
+    <div id="mobile-controls" class="mobile-controls" style="display: none;">
+        <!-- Virtual Joystick for movement -->
+        <div id="joystick-container" class="joystick-container">
+            <div id="joystick-base" class="joystick-base"></div>
+            <div id="joystick-stick" class="joystick-stick"></div>
+        </div>
+        
+        <!-- Fire Button -->
+        <div id="fire-button-container" class="fire-button-container">
+            <button id="fire-button" class="fire-button">
+                <span class="fire-icon">🔥</span>
+                <span class="fire-text">FIRE</span>
+            </button>
+            <div id="fire-cooldown" class="fire-cooldown"></div>
+        </div>
+        
+        <!-- Turret Control Touch Area (right side of screen) -->
+        <div id="turret-touch-area" class="turret-touch-area"></div>
+    </div>
+
+    <!-- Orientation Warning (portrait mode) -->
+    <div id="orientation-warning" class="orientation-warning">
+        <div class="orientation-content">
+            <div class="rotate-icon">📱 ↻</div>
+            <h2>Otoč zariadenie</h2>
+            <p>Pre lepší herný zážitok otočte telefón do landscape režimu</p>
+        </div>
+    </div>
 
     <!-- Loading Screen -->
     <div id="loading-screen" class="loading-screen active">
@@ -912,8 +944,20 @@
     <script src="client/entities/Effects.js?v=2"></script>
     <script src="client/entities/Bullet.js?v=2"></script>
     
+    <!-- Initial Mobile Orientation Alert -->
+    <div id="mobile-orientation-alert" class="mobile-orientation-alert">
+        <div class="alert-content">
+            <h2>📱 Tip</h2>
+            <p>Pre najlepší zážitok z hry otočte telefón na šírku!</p>
+            <button id="orientation-alert-ok" class="alert-ok-button">OK</button>
+        </div>
+    </div>
+
+    <!-- Mobile Controls Manager -->
+    <script src="client/managers/MobileControls.js?v=8"></script>
+    
     <!-- Main game script -->
-    <script src="script.js?v=2"></script>
+    <script src="script.js?v=2.2"></script>
     
     <!-- Include performance manager for multiplayer optimizations -->
     <script src="src/managers/MultiplayerPerformanceManager.js?v=2"></script>

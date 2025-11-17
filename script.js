@@ -3430,10 +3430,24 @@ function init() {
             // Skip intro video and go straight to main menu
             console.log("Skipping intro video. Showing main menu directly.");
             showScreen('mainMenu');
+            
+            // Show mobile orientation alert if on mobile device
+            if (window.mobileControls && window.mobileControls.isMobile) {
+                setTimeout(() => {
+                    showMobileOrientationAlert();
+                }, 500); // Small delay after showing menu
+            }
         } else {
             // Fallback if video element not found, go straight to main menu
             console.warn("Intro video element not found. Showing main menu directly.");
             showScreen('mainMenu');
+            
+            // Show mobile orientation alert if on mobile device
+            if (window.mobileControls && window.mobileControls.isMobile) {
+                setTimeout(() => {
+                    showMobileOrientationAlert();
+                }, 500); // Small delay after showing menu
+            }
         }
     }).catch(error => {
         console.error("Loading failed:", error);
@@ -3977,10 +3991,15 @@ function init() {
         });
     }
 
-    // Register window resize handler
+    // Register window resize handler (mobile-optimized)
     window.addEventListener('resize', () => {
         if (gameState.currentScreen === 'game') {
             showScreen('game'); // Re-adjust canvas and arena size
+            
+            // Update mobile controls if active
+            if (window.mobileControls && window.mobileControls.isActive) {
+                window.mobileControls.checkOrientation();
+            }
         } else {
             appContainer.style.width = `${window.innerWidth}px`;
             appContainer.style.height = `${window.innerHeight}px`;
@@ -4421,6 +4440,11 @@ function gameLoop() {
     update();
     draw();
     drawMinimap(); // Draw minimap in each frame
+    
+    // Update mobile controls
+    if (window.mobileControls && window.mobileControls.isActive) {
+        window.mobileControls.update();
+    }
     
     // Update performance metrics
     if (performanceManager) {
@@ -6035,15 +6059,25 @@ function updateCamera() {
     const targetX = gameState.player.x + gameState.player.width / 2;
     const targetY = gameState.player.y + gameState.player.height / 2;
 
+    // Mobile zoom adjustment - landscape orientation
+    const isMobile = window.mobileControls && window.mobileControls.isMobile;
+    const isLandscape = window.innerWidth > window.innerHeight;
+    
+    // MOBILE ZOOM OUT - zväčšujú viewport aby bolo vidno viac
+    // Scale factor: 1.5 = vidíš 50% viac priestoru
+    const mobileZoomScale = (isMobile && isLandscape) ? 1.6 : 1.0;
+    const effectiveCanvasWidth = canvas.width * mobileZoomScale;
+    const effectiveCanvasHeight = canvas.height * mobileZoomScale;
+    
     // The camera will always display the same size viewport (canvas.width, canvas.height)
     // The player should be in the center of this viewport
-    let newCameraX = targetX - canvas.width / 2;
-    let newCameraY = targetY - canvas.height / 2;
+    let newCameraX = targetX - effectiveCanvasWidth / 2;
+    let newCameraY = targetY - effectiveCanvasHeight / 2;
 
     // Clamp camera to arena boundaries
     // Make sure camera doesn't show outside the arena
-    newCameraX = Math.max(0, Math.min(newCameraX, gameState.arenaWidth - canvas.width));
-    newCameraY = Math.max(0, Math.min(newCameraY, gameState.arenaHeight - canvas.height));
+    newCameraX = Math.max(0, Math.min(newCameraX, gameState.arenaWidth - effectiveCanvasWidth));
+    newCameraY = Math.max(0, Math.min(newCameraY, gameState.arenaHeight - effectiveCanvasHeight));
 
     // Smooth camera movement (optional, but makes it less jarring)
     const smoothFactor = 0.05;
@@ -6061,7 +6095,18 @@ function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     ctx.save();
-    // No camera zoom here, it's fixed at 1
+    
+    // Mobile zoom out effect
+    const isMobile = window.mobileControls && window.mobileControls.isMobile;
+    const isLandscape = window.innerWidth > window.innerHeight;
+    const mobileZoomScale = (isMobile && isLandscape) ? 1.6 : 1.0;
+    
+    if (mobileZoomScale !== 1.0) {
+        // Scale down rendering to show more area
+        const scale = 1 / mobileZoomScale;
+        ctx.scale(scale, scale);
+    }
+    
     ctx.translate(-gameState.cameraX, -gameState.cameraY);
 
     // Draw background texture (grass or dessert)
@@ -6359,6 +6404,38 @@ function drawMinimap() {
         canvas.width * scaleX,
         canvas.height * scaleY
     );
+}
+
+// --- MOBILE ORIENTATION ALERT ---
+function showMobileOrientationAlert() {
+    const alert = document.getElementById('mobile-orientation-alert');
+    const okButton = document.getElementById('orientation-alert-ok');
+    
+    if (!alert || !okButton) return;
+    
+    // Show the alert
+    alert.style.display = 'flex';
+    
+    // Handle OK button click
+    okButton.addEventListener('click', function() {
+        alert.style.display = 'none';
+    }, { once: true }); // Use once to prevent multiple listeners
+}
+
+// --- MOBILE ORIENTATION ALERT ---
+function showMobileOrientationAlert() {
+    const alert = document.getElementById('mobile-orientation-alert');
+    const okButton = document.getElementById('orientation-alert-ok');
+    
+    if (!alert || !okButton) return;
+    
+    // Show the alert
+    alert.style.display = 'flex';
+    
+    // Handle OK button click
+    okButton.addEventListener('click', function() {
+        alert.style.display = 'none';
+    }, { once: true }); // Use once to prevent multiple listeners
 }
 
 // --- ROUND AND GAME LOGIC ---
