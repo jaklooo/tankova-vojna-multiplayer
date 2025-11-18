@@ -1661,8 +1661,39 @@ function startNextRound(room) {
 
 // Start server
 const PORT = process.env.PORT || 3002;
+
+// Get local network IP address (prefer WiFi)
+function getLocalIPAddress() {
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+    let fallbackIP = null;
+    
+    // Try to find WiFi or Wireless interface first
+    for (const name of Object.keys(interfaces)) {
+        if (name.toLowerCase().includes('wi-fi') || name.toLowerCase().includes('wireless')) {
+            for (const iface of interfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    return iface.address;
+                }
+            }
+        }
+    }
+    
+    // Fallback to any non-internal IPv4 address
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                if (!fallbackIP) fallbackIP = iface.address;
+            }
+        }
+    }
+    
+    return fallbackIP || 'localhost';
+}
+
 server.listen(PORT, '0.0.0.0', () => {
+    const localIP = getLocalIPAddress();
     console.log(`Server beží na porte ${PORT}`);
     console.log(`Lokálne: http://localhost:${PORT}`);
-    console.log(`Sieť: http://192.168.68.113:${PORT}`);
+    console.log(`Sieť: http://${localIP}:${PORT}`);
 });

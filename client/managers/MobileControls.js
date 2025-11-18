@@ -52,17 +52,23 @@ class MobileControls {
     }
     
     /**
-     * Calculate max radius based on viewport height
-     * 18vh container = ~18% of viewport height
-     * maxRadius should be ~40% of container (7vh stick can move ~5vh from center)
+     * Calculate max radius based on actual joystick container size
+     * Uses vmin units with max constraint: min(15vmin, 140px)
      */
     calculateMaxRadius() {
-        // Container je 18vh, radius je 9vh (50% containera)
-        // Stick je 7vh, takže sa môže pohybovať max 9vh - 3.5vh = 5.5vh od centra
-        const containerSizeVh = 18; // Z CSS: height: 18vh
-        const vh = window.innerHeight / 100;
-        const containerSize = containerSizeVh * vh;
-        const maxRadius = containerSize * 0.30; // 30% container size pre smooth control
+        // Get actual container element to measure real size
+        const container = this.joystick.container;
+        if (container) {
+            const rect = container.getBoundingClientRect();
+            const containerSize = rect.width; // Should match height (square)
+            const maxRadius = containerSize * 0.35; // 35% of container for smooth control
+            return maxRadius;
+        }
+        
+        // Fallback calculation if container not yet available
+        const vmin = Math.min(window.innerWidth, window.innerHeight) / 100;
+        const containerSize = Math.min(15 * vmin, 140); // min(15vmin, 140px)
+        const maxRadius = containerSize * 0.35;
         return maxRadius;
     }
     

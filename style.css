@@ -2509,13 +2509,13 @@ body::-webkit-scrollbar-thumb:hover {
     touch-action: none;
 }
 
-/* Joystick Container (Bottom Left) - RESPONSIVE */
+/* Joystick Container (Bottom Left) - RESPONSIVE with max size */
 .joystick-container {
     position: absolute;
-    bottom: 3vh;
-    left: 3vw;
-    width: 18vh;  /* Proporcionálne k výške obrazovky */
-    height: 18vh;
+    bottom: max(3vh, env(safe-area-inset-bottom, 20px));
+    left: max(3vw, env(safe-area-inset-left, 20px));
+    width: min(15vmin, 140px);  /* Menšia dimenzia, max 140px */
+    height: min(15vmin, 140px);
     pointer-events: all;
     user-select: none;
     -webkit-user-select: none;
@@ -2534,8 +2534,8 @@ body::-webkit-scrollbar-thumb:hover {
 
 .joystick-stick {
     position: absolute;
-    width: 7vh;  /* 40% veľkosti base */
-    height: 7vh;
+    width: min(6vmin, 55px);  /* ~40% veľkosti base */
+    height: min(6vmin, 55px);
     border-radius: 50%;
     background: linear-gradient(135deg, #BB133A 0%, #8B0F2D 100%);
     border: 0.3vh solid rgba(255, 255, 255, 0.5);
@@ -2558,11 +2558,11 @@ body::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3);
 }
 
-/* Fire Button Container (Bottom Right) - RESPONSIVE */
+/* Fire Button Container (Bottom Right) - RESPONSIVE with max size */
 .fire-button-container {
     position: absolute;
-    bottom: 3vh;
-    right: 3vw;
+    bottom: max(3vh, env(safe-area-inset-bottom, 20px));
+    right: max(3vw, env(safe-area-inset-right, 20px));
     pointer-events: all;
     user-select: none;
     -webkit-user-select: none;
@@ -2570,8 +2570,8 @@ body::-webkit-scrollbar-thumb:hover {
 }
 
 .fire-button {
-    width: 13vh;  /* Trochu menší ako joystick */
-    height: 13vh;
+    width: min(12vmin, 110px);  /* Trochu menší ako joystick, max 110px */
+    height: min(12vmin, 110px);
     border-radius: 50%;
     background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
     border: 0.4vh solid rgba(255, 255, 255, 0.4);
@@ -2597,14 +2597,14 @@ body::-webkit-scrollbar-thumb:hover {
 }
 
 .fire-icon {
-    font-size: 4vh;  /* Responzívna veľkosť ikony */
+    font-size: min(3.5vmin, 35px);  /* Proporcionálna ikona */
     line-height: 1;
     margin-bottom: 0.5vh;
 }
 
 .fire-text {
     font-family: 'Press Start 2P', monospace;
-    font-size: 1.2vh;  /* Responzívny text */
+    font-size: min(1vmin, 10px);  /* Malý text */
     color: white;
     font-weight: bold;
     text-shadow: 0 0.3vh 0.5vh rgba(0, 0, 0, 0.5);
@@ -2805,12 +2805,12 @@ body::-webkit-scrollbar-thumb:hover {
         padding: 0.5vh 1vh !important;
     }
     
-    /* Reposition minimap to avoid controls - responzívna veľkosť */
+    /* Reposition minimap to avoid controls - responzívna veľkosť s max */
     #minimapCanvas {
-        top: 8vh !important;
-        left: 1vw !important;
-        width: 12vh !important;  /* Proporcionálne k výške */
-        height: 12vh !important;
+        top: max(8vh, env(safe-area-inset-top, 60px)) !important;
+        left: max(1vw, env(safe-area-inset-left, 10px)) !important;
+        width: min(10vmin, 100px) !important;  /* Max 100px */
+        height: min(10vmin, 100px) !important;
         border-width: 0.3vh !important;
     }
     
