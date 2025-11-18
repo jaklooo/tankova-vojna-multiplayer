@@ -20,7 +20,7 @@ class MobileControls {
             startY: 0,
             currentX: 0,
             currentY: 0,
-            maxRadius: 45, // Maximum stick movement radius
+            maxRadius: this.calculateMaxRadius(), // Dynamicky počítaný radius
             angle: 0,
             distance: 0
         };
@@ -49,6 +49,21 @@ class MobileControls {
         this.orientationWarning = null;
         
         this.init();
+    }
+    
+    /**
+     * Calculate max radius based on viewport height
+     * 18vh container = ~18% of viewport height
+     * maxRadius should be ~40% of container (7vh stick can move ~5vh from center)
+     */
+    calculateMaxRadius() {
+        // Container je 18vh, radius je 9vh (50% containera)
+        // Stick je 7vh, takže sa môže pohybovať max 9vh - 3.5vh = 5.5vh od centra
+        const containerSizeVh = 18; // Z CSS: height: 18vh
+        const vh = window.innerHeight / 100;
+        const containerSize = containerSizeVh * vh;
+        const maxRadius = containerSize * 0.30; // 30% container size pre smooth control
+        return maxRadius;
     }
     
     /**
@@ -478,6 +493,13 @@ class MobileControls {
         // Listen for orientation changes
         window.addEventListener('orientationchange', () => {
             this.checkOrientation();
+            // Recalculate maxRadius when orientation changes
+            this.joystick.maxRadius = this.calculateMaxRadius();
+        });
+        
+        // Listen for window resize (for different screen sizes)
+        window.addEventListener('resize', () => {
+            this.joystick.maxRadius = this.calculateMaxRadius();
         });
         
         // Initial check

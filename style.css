@@ -2509,13 +2509,13 @@ body::-webkit-scrollbar-thumb:hover {
     touch-action: none;
 }
 
-/* Joystick Container (Bottom Left) */
+/* Joystick Container (Bottom Left) - RESPONSIVE */
 .joystick-container {
     position: absolute;
-    bottom: 30px;
-    left: 30px;
-    width: 150px;
-    height: 150px;
+    bottom: 3vh;
+    left: 3vw;
+    width: 18vh;  /* Proporcionálne k výške obrazovky */
+    height: 18vh;
     pointer-events: all;
     user-select: none;
     -webkit-user-select: none;
@@ -2528,18 +2528,18 @@ body::-webkit-scrollbar-thumb:hover {
     height: 100%;
     border-radius: 50%;
     background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2), rgba(0, 0, 0, 0.3));
-    border: 4px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 2px 10px rgba(255, 255, 255, 0.1);
+    border: 0.4vh solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 0.5vh 2vh rgba(0, 0, 0, 0.4), inset 0 0.3vh 1vh rgba(255, 255, 255, 0.1);
 }
 
 .joystick-stick {
     position: absolute;
-    width: 60px;
-    height: 60px;
+    width: 7vh;  /* 40% veľkosti base */
+    height: 7vh;
     border-radius: 50%;
     background: linear-gradient(135deg, #BB133A 0%, #8B0F2D 100%);
-    border: 3px solid rgba(255, 255, 255, 0.5);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5), inset 0 2px 8px rgba(255, 255, 255, 0.2);
+    border: 0.3vh solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 0.5vh 1.5vh rgba(0, 0, 0, 0.5), inset 0 0.3vh 0.8vh rgba(255, 255, 255, 0.2);
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
@@ -2552,17 +2552,17 @@ body::-webkit-scrollbar-thumb:hover {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 20px;
-    height: 20px;
+    width: 2.5vh;
+    height: 2.5vh;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.3);
 }
 
-/* Fire Button Container (Bottom Right) */
+/* Fire Button Container (Bottom Right) - RESPONSIVE */
 .fire-button-container {
     position: absolute;
-    bottom: 30px;
-    right: 30px;
+    bottom: 3vh;
+    right: 3vw;
     pointer-events: all;
     user-select: none;
     -webkit-user-select: none;
@@ -2570,12 +2570,12 @@ body::-webkit-scrollbar-thumb:hover {
 }
 
 .fire-button {
-    width: 110px;
-    height: 110px;
+    width: 13vh;  /* Trochu menší ako joystick */
+    height: 13vh;
     border-radius: 50%;
     background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
-    border: 4px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 6px 25px rgba(0, 0, 0, 0.4), inset 0 2px 10px rgba(255, 255, 255, 0.2);
+    border: 0.4vh solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 0.7vh 2.5vh rgba(0, 0, 0, 0.4), inset 0 0.3vh 1vh rgba(255, 255, 255, 0.2);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -2588,7 +2588,7 @@ body::-webkit-scrollbar-thumb:hover {
 
 .fire-button:active {
     transform: scale(0.95);
-    box-shadow: 0 3px 15px rgba(0, 0, 0, 0.5), inset 0 2px 10px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 0.4vh 1.5vh rgba(0, 0, 0, 0.5), inset 0 0.3vh 1vh rgba(0, 0, 0, 0.2);
 }
 
 .fire-button.cooldown {
@@ -2597,17 +2597,17 @@ body::-webkit-scrollbar-thumb:hover {
 }
 
 .fire-icon {
-    font-size: 2.5em;
+    font-size: 4vh;  /* Responzívna veľkosť ikony */
     line-height: 1;
-    margin-bottom: 5px;
+    margin-bottom: 0.5vh;
 }
 
 .fire-text {
     font-family: 'Press Start 2P', monospace;
-    font-size: 0.7em;
+    font-size: 1.2vh;  /* Responzívny text */
     color: white;
     font-weight: bold;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 0.3vh 0.5vh rgba(0, 0, 0, 0.5);
 }
 
 /* Fire Button Cooldown Overlay */
@@ -2749,34 +2749,8 @@ body::-webkit-scrollbar-thumb:hover {
 
 /* Mobile Responsive Adjustments */
 @media screen and (max-width: 768px) {
-    /* Scale down joystick on very small screens */
-    .joystick-container {
-        width: 120px;
-        height: 120px;
-        bottom: 20px;
-        left: 20px;
-    }
-    
-    .joystick-stick {
-        width: 50px;
-        height: 50px;
-    }
-    
-    /* Scale down fire button */
-    .fire-button {
-        width: 90px;
-        height: 90px;
-        bottom: 20px;
-        right: 20px;
-    }
-    
-    .fire-icon {
-        font-size: 2em;
-    }
-    
-    .fire-text {
-        font-size: 0.6em;
-    }
+    /* Mobilné zariadenia už používajú vh/vw jednotky - nepotrebujeme prepisovať */
+    /* Joystick a fire button sa škálujú automaticky cez vh jednotky */
 }
 
 /* Portrait Mode Detection */
@@ -2805,39 +2779,39 @@ body::-webkit-scrollbar-thumb:hover {
     }
 }
 
-/* Mobile HUD Adjustments */
+/* Mobile HUD Adjustments - RESPONSIVE */
 @media screen and (max-width: 768px) {
     /* Make HUD elements compact for mobile */
     #health-bar, #ammo-bar {
-        height: 24px !important;
-        font-size: 0.85em !important;
-        padding: 4px 8px !important;
+        height: 3vh !important;
+        font-size: 1.5vh !important;
+        padding: 0.5vh 1vh !important;
     }
     
     #coin-display {
-        font-size: 1em !important;
-        padding: 8px 12px !important;
+        font-size: 1.8vh !important;
+        padding: 1vh 1.5vh !important;
     }
     
     /* Zmenšiť hornú lištu s teamami */
     #team-display, .team-info {
-        font-size: 0.8em !important;
-        padding: 6px 10px !important;
+        font-size: 1.4vh !important;
+        padding: 0.8vh 1.2vh !important;
     }
     
     /* Zmenšiť score display */
     #score-display, .score-item {
-        font-size: 0.85em !important;
-        padding: 4px 8px !important;
+        font-size: 1.5vh !important;
+        padding: 0.5vh 1vh !important;
     }
     
-    /* Reposition minimap to avoid controls - menšia pre mobile */
+    /* Reposition minimap to avoid controls - responzívna veľkosť */
     #minimapCanvas {
-        top: 60px !important;
-        left: 8px !important;
-        width: 100px !important;
-        height: 100px !important;
-        border-width: 2px !important;
+        top: 8vh !important;
+        left: 1vw !important;
+        width: 12vh !important;  /* Proporcionálne k výške */
+        height: 12vh !important;
+        border-width: 0.3vh !important;
     }
     
     /* Make bullet selection buttons larger */
