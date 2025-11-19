@@ -20,7 +20,7 @@ class MobileControls {
             startY: 0,
             currentX: 0,
             currentY: 0,
-            maxRadius: this.calculateMaxRadius(), // Dynamicky počítaný radius
+            maxRadius: 45, // Maximum stick movement radius
             angle: 0,
             distance: 0
         };
@@ -49,27 +49,6 @@ class MobileControls {
         this.orientationWarning = null;
         
         this.init();
-    }
-    
-    /**
-     * Calculate max radius based on actual joystick container size
-     * Uses vmin units with max constraint: min(15vmin, 140px)
-     */
-    calculateMaxRadius() {
-        // Get actual container element to measure real size
-        const container = this.joystick.container;
-        if (container) {
-            const rect = container.getBoundingClientRect();
-            const containerSize = rect.width; // Should match height (square)
-            const maxRadius = containerSize * 0.35; // 35% of container for smooth control
-            return maxRadius;
-        }
-        
-        // Fallback calculation if container not yet available
-        const vmin = Math.min(window.innerWidth, window.innerHeight) / 100;
-        const containerSize = Math.min(15 * vmin, 140); // min(15vmin, 140px)
-        const maxRadius = containerSize * 0.35;
-        return maxRadius;
     }
     
     /**
@@ -499,13 +478,6 @@ class MobileControls {
         // Listen for orientation changes
         window.addEventListener('orientationchange', () => {
             this.checkOrientation();
-            // Recalculate maxRadius when orientation changes
-            this.joystick.maxRadius = this.calculateMaxRadius();
-        });
-        
-        // Listen for window resize (for different screen sizes)
-        window.addEventListener('resize', () => {
-            this.joystick.maxRadius = this.calculateMaxRadius();
         });
         
         // Initial check
